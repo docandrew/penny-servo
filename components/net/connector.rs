@@ -663,7 +663,13 @@ pub fn create_http_client(tls_config: TlsConfig) -> ServoClient {
         .enable_http2()
         .wrap_connector(ProxyConnector::new());
 
-    Client::builder(TokioExecutor {})
+    let mut builder = Client::builder(TokioExecutor {});
+    #[cfg(target_os = "cubit")]
+    builder
+        .pool_timer(hyper_util::rt::TokioTimer::new())
+        .pool_idle_timeout(Duration::from_secs(5))
+        .pool_max_idle_per_host(2);
+    builder
         .http1_title_case_headers(true)
         .build(InstrumentedConnector::from(connector))
 }
