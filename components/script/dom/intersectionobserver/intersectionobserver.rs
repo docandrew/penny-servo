@@ -343,7 +343,7 @@ impl IntersectionObserver {
         cx: &mut JSContext,
         document: &Document,
         time: CrossProcessInstant,
-        root_bounds: Rect<Au, CSSPixel>,
+        root_bounds: Option<Rect<Au, CSSPixel>>,
         bounding_client_rect: Rect<Au, CSSPixel>,
         intersection_rect: Rect<Au, CSSPixel>,
         is_intersecting: bool,
@@ -363,7 +363,7 @@ impl IntersectionObserver {
             )
         };
 
-        let root_bounds = rect_to_domrectreadonly(root_bounds);
+        let root_bounds = root_bounds.map(&mut rect_to_domrectreadonly);
         let bounding_client_rect = rect_to_domrectreadonly(bounding_client_rect);
         let intersection_rect = rect_to_domrectreadonly(intersection_rect);
 
@@ -378,7 +378,7 @@ impl IntersectionObserver {
             self.owner_doc.window(),
             None,
             time,
-            Some(&root_bounds),
+            root_bounds.as_deref(),
             &bounding_client_rect,
             &intersection_rect,
             is_intersecting,
@@ -431,7 +431,9 @@ impl IntersectionObserver {
     /// Disconnect the observer itself from owner doc.
     /// If not connected to a [`Document`], do nothing.
     fn disconnect_from_owner(&self) {
-        if self.connected_to_document.get() {
+        // A later observe() must re-register this observer with the document.
+        // Clear membership when removing it, including after the last unobserve.
+        if self.connected_to_document.replace(false) {
             self.owner_doc.remove_intersection_observer(self);
         }
     }
@@ -480,20 +482,18 @@ impl IntersectionObserver {
             None => None,
         };
 
-        // > When calculating the root intersection rectangle for a same-origin-domain target,
-        // > the rectangle is then expanded according to the offsets in the IntersectionObserver’s
-        // > [[rootMargin]] slot in a manner similar to CSS’s margin property, with the four values
-        // > indicating the amount the top, right, bottom, and left edges, respectively, are offset by,
-        // > with positive lengths indicating an outward offset. Percentages are resolved relative to
-        // > the width of the undilated rectangle.
-        // TODO(stevennovaryo): add check for same-origin-domain
-        intersection_rectangle.map(|intersection_rectangle| {
-            let margin = Self::resolve_percentages_with_basis(
-                &self.root_margin.borrow(),
-                intersection_rectangle,
-            );
-            intersection_rectangle.outer_rect(margin)
-        })
+        // Margins depend on each target's origin; apply them during target computation.
+        intersection_rectangle
+    }
+
+    fn is_same_origin_domain_target(&self, target: &Element) -> bool {
+        let root_document = match self.concrete_root() {
+            Some(ElementOrDocument::Element(element)) => element.owner_document(),
+            Some(ElementOrDocument::Document(document)) => document,
+            // A non-local top document must not expose geometry or margins.
+            None => return false,
+        };
+        root_document.origin().same_origin_domain(&target.owner_document().origin())
     }
 
     /// Return root or try to get the top-level browsing context document in case if this is a implicit root.
@@ -560,11 +560,18 @@ impl IntersectionObserver {
 
         // Following the implementation of Gecko, we will skip further processing if these
         // information not available. This would also handle display none element.
-        let (Some(root_bounds), Some(target_rect), Some(root_intersection)) =
+        let (Some(mut root_bounds), Some(target_rect), Some(root_intersection)) =
             (maybe_root_bounds, maybe_target_rect, self.concrete_root())
         else {
             return IntersectionObservationOutput::default_skipped();
         };
+
+        let same_origin_domain = self.is_same_origin_domain_target(target);
+        if same_origin_domain {
+            root_bounds = root_bounds.outer_rect(Self::resolve_percentages_with_basis(
+                &self.root_margin.borrow(), root_bounds,
+            ));
+        }
 
         // TODO(stevennovaryo): we should probably also consider adding visibity check, ideally
         //                      it would require new query from LayoutThread.
@@ -577,7 +584,7 @@ impl IntersectionObserver {
             &root_intersection,
             root_bounds,
             target_rect,
-            &self.scroll_margin.borrow(),
+            same_origin_domain.then_some(&*self.scroll_margin.borrow()),
         );
         let intersection_rect = maybe_intersection_rect.unwrap_or_default();
 
@@ -695,13 +702,13 @@ impl IntersectionObserver {
                 intersection_output.is_intersecting != previous_is_intersecting ||
                 intersection_output.is_visible != previous_is_visible
             {
-                // TODO(stevennovaryo): Per IntersectionObserverEntry interface, the rootBounds
-                //                      should be null for cross-origin-domain target.
+                // Suppress root geometry for cross-origin-domain targets.
                 self.queue_an_intersectionobserverentry(
                     cx,
                     document,
                     time,
-                    intersection_output.root_bounds,
+                    self.is_same_origin_domain_target(target)
+                        .then_some(intersection_output.root_bounds),
                     intersection_output.target_rect,
                     intersection_output.intersection_rect,
                     intersection_output.is_intersecting,
@@ -733,9 +740,9 @@ impl IntersectionObserver {
     ) -> SideOffsets2D<Au, CSSPixel> {
         let inner = &margin.0;
         SideOffsets2D::new(
-            inner.0.to_used_value(containing_block.height()),
+            inner.0.to_used_value(containing_block.width()),
             inner.1.to_used_value(containing_block.width()),
-            inner.2.to_used_value(containing_block.height()),
+            inner.2.to_used_value(containing_block.width()),
             inner.3.to_used_value(containing_block.width()),
         )
     }
@@ -924,7 +931,7 @@ fn compute_the_intersection(
     root: &ElementOrDocument,
     root_bounds: Rect<Au, CSSPixel>,
     mut intersection_rect: Rect<Au, CSSPixel>,
-    scroll_margin: &IntersectionObserverMargin,
+    scroll_margin: Option<&IntersectionObserverMargin>,
 ) -> Option<Rect<Au, CSSPixel>> {
     // > 1. Let intersectionRect be the result of getting the bounding box for target.
     // We had delegated the computation of this to the caller of the function.
@@ -996,7 +1003,9 @@ fn compute_the_intersection(
                 .padding_box_without_reflow()
         {
             let container_padding_box =
-                if containing_element.establishes_scroll_container_without_reflow() {
+                if containing_element.establishes_scroll_container_without_reflow() &&
+                    let Some(scroll_margin) = scroll_margin
+                {
                     let margin = IntersectionObserver::resolve_percentages_with_basis(
                         scroll_margin,
                         container_padding_box,
