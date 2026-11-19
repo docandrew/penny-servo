@@ -440,16 +440,77 @@ impl Painter {
             None,
             time_profiler_channel.clone(),
             || {
-                if let Some(renderer) = self.webrender_renderer.as_mut() {
-                    renderer.update();
+                let mut update = || {
+                    if let Some(renderer) = self.webrender_renderer.as_mut() {
+                        if time_profiler_channel.0.is_some() {
+                            let flag = webrender::DebugFlags::GPU_TIME_QUERIES;
+                            let flags = renderer.get_debug_flags();
+                            if !flags.contains(flag) {
+                                renderer.set_debug_flags(flags | flag);
+                            }
+                            // Consume completed query batches before WebRender does.
+                            // SWGL implements these as CPU monotonic-clock intervals,
+                            // not hardware GPU time. Results lag several frames.
+                            if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: begin queries"); }
+                        let (frame, timers, _) = renderer.gpu_profiler.build_samples();
+                        if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: end queries"); }
+                            for timer in timers {
+                                if timer.time_ns >= 1_000_000 {
+                                    warn!("PENNY-DRAW-TIMER: frame={frame:?} tag={} ms={:.3}",
+                                        timer.tag.label, timer.time_ns as f64 / 1_000_000.0);
+                                }
+                            }
+                        }
+                        if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: begin update"); }
+                        renderer.update();
+                        if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: end update"); }
+                    }
+                };
+                if time_profiler_channel.0.is_some() {
+                    time_profile!(ProfilerCategory::PaintUpdate, None,
+                        time_profiler_channel.clone(), update);
+                } else {
+                    update();
                 }
 
-                // Paint the scene.
-                // TODO(gw): Take notice of any errors the renderer returns!
-                self.clear_background();
-                if let Some(renderer) = self.webrender_renderer.as_mut() {
-                    let size = self.rendering_context.size2d().to_i32();
-                    renderer.render(size, 0 /* buffer_age */).ok();
+                let mut draw = || {
+                    self.clear_background();
+                    if let Some(renderer) = self.webrender_renderer.as_mut() {
+                        let size = self.rendering_context.size2d().to_i32();
+                        if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: begin draw"); }
+                        let results = renderer.render(size, 0 /* buffer_age */);
+                        if time_profiler_channel.0.is_some() { warn!("PENNY-PAINT: end draw"); }
+                        if time_profiler_channel.0.is_some() {
+                            match &results {
+                                Ok(result) => {
+                                    let stats = &result.stats;
+                                    warn!("PENNY-RENDER: draws={} upload_mb={:.3} upload_ms={:.3} scene_ms={:.3} frame_ms={:.3} targets_color={} targets_alpha={} rasterized={}",
+                                        stats.total_draw_calls, stats.texture_upload_mb,
+                                        stats.resource_upload_time, stats.scene_build_time,
+                                        stats.frame_build_time, stats.color_target_count,
+                                        stats.alpha_target_count, result.did_rasterize_any_tile);
+                                    // CuBit (WEB-001): WebRender's own stage times.
+                                    for (category, milliseconds) in [
+                                        (ProfilerCategory::WrSceneBuild, stats.scene_build_time),
+                                        (ProfilerCategory::WrFrameBuild, stats.frame_build_time),
+                                        (ProfilerCategory::WrUpload, stats.resource_upload_time),
+                                    ] {
+                                        if milliseconds > 0.0 {
+                                            profile_traits::time::send_measured_milliseconds(
+                                                category, time_profiler_channel, milliseconds);
+                                        }
+                                    }
+                                },
+                                Err(errors) => warn!("PENNY-RENDER: errors={errors:?}"),
+                            }
+                        }
+                    }
+                };
+                if time_profiler_channel.0.is_some() {
+                    time_profile!(ProfilerCategory::PaintDraw, None,
+                        time_profiler_channel.clone(), draw);
+                } else {
+                    draw();
                 }
             }
         );
