@@ -1911,6 +1911,10 @@ where
                     "Document origin retrieval after closure",
                 );
             },
+            ScriptToConstellationMessage::GetActivePipeline(context_id, response_sender) => {
+                let pipeline = self.browsing_contexts.get(&context_id).map(|context| context.pipeline_id);
+                let _ = response_sender.send(pipeline);
+            },
             ScriptToConstellationMessage::GetDocumentOriginDetails(
                 pipeline_id,
                 response_sender,

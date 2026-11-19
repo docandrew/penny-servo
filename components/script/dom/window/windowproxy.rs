@@ -906,7 +906,23 @@ impl WindowProxy {
     pub(crate) fn document_origin_and_internal_ancestor_origin_objects_list(
         &self,
     ) -> Option<(OriginSnapshot, Vec<ImmutableOrigin>)> {
-        let pipeline_id = self.currently_active()?;
+        let pipeline_id = if let Some(pipeline_id) = self.currently_active() {
+            pipeline_id
+        } else {
+            // Remote proxies deliberately have no local active pipeline. Ask
+            // the constellation to resolve the browsing context, rather than
+            // treating a remote parent as absent.
+            let (sender, receiver) = generic_channel::channel()?;
+            self.global().script_to_constellation_chan().send(
+                ScriptToConstellationMessage::GetActivePipeline(self.browsing_context_id(), sender),
+            ).ok()?;
+            receiver.recv().ok()??
+        };
+        // Never synchronously send an origin query back to this script thread.
+        if let Some(document) = ScriptThread::find_document(pipeline_id) {
+            return Some((document.origin().snapshot(),
+                document.internal_ancestor_origin_objects_list().clone().unwrap_or_default()));
+        }
         let (result_sender, result_receiver) = generic_channel::channel().unwrap();
         self.global()
             .script_to_constellation_chan()

@@ -160,6 +160,7 @@ mod from_script {
                 },
                 Self::FocusRemoteBrowsingContext(..) => target!("FocusRemoteBrowsingContext"),
                 Self::GetTopForBrowsingContext(..) => target!("GetTopForBrowsingContext"),
+                Self::GetActivePipeline(..) => target!("GetActivePipeline"),
                 Self::GetBrowsingContextInfo(..) => target!("GetBrowsingContextInfo"),
                 Self::GetDocumentOrigin(..) => target!("GetDocumentOrigin"),
                 Self::IsCurrentlyFullyActive(..) => target!("IsCurrentlyFullyActive"),

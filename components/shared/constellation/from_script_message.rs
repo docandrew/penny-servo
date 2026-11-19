@@ -707,6 +707,9 @@ pub enum ScriptToConstellationMessage {
     FocusRemoteBrowsingContext(BrowsingContextId, RemoteFocusOperation),
     /// Get the top-level browsing context info for a given browsing context.
     GetTopForBrowsingContext(BrowsingContextId, GenericSender<Option<WebViewId>>),
+    /// Resolve a browsing context's current document even when its WindowProxy
+    /// belongs to another script thread.
+    GetActivePipeline(BrowsingContextId, GenericSender<Option<PipelineId>>),
     /// Get the browsing context id of the browsing context in which pipeline is
     /// embedded and the parent pipeline id of that browsing context.
     GetBrowsingContextInfo(

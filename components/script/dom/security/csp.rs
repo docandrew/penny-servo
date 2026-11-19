@@ -218,7 +218,9 @@ impl CspReporting for Option<CspList> {
                 let Some((parent_origin, _)) =
                     parent_proxy.document_origin_and_internal_ancestor_origin_objects_list()
                 else {
-                    break;
+                    // A missing parent snapshot must not silently shorten the
+                    // ancestor chain used for frame-ancestors enforcement.
+                    return true;
                 };
                 let parent_origin = parent_origin.immutable().ascii_serialization();
                 let parent_origin = Url::parse(&parent_origin)
