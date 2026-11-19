@@ -125,6 +125,16 @@ pub enum ProfilerCategory {
 
     IpcReceiver = 0x94,
     IpcBytesReceiver = 0x95,
+
+    // CuBit (WEB-001): stage breakdown.
+    WrSceneBuild = 0x03,
+    WrFrameBuild = 0x04,
+    WrUpload = 0x05,
+    LayoutStyle = 0x11,
+    LayoutBoxTree = 0x12,
+    LayoutFragmentTree = 0x13,
+    LayoutStackingContext = 0x14,
+    LayoutDisplayList = 0x15,
 }
 
 impl ProfilerCategory {
@@ -176,6 +186,14 @@ impl ProfilerCategory {
             ProfilerCategory::TimeToInteractive => "TimeToInteractive",
             ProfilerCategory::IpcReceiver => "IpcReceiver",
             ProfilerCategory::IpcBytesReceiver => "IpcBytesReceiver",
+            ProfilerCategory::WrSceneBuild => "WrSceneBuild",
+            ProfilerCategory::WrFrameBuild => "WrFrameBuild",
+            ProfilerCategory::WrUpload => "WrUpload",
+            ProfilerCategory::LayoutStyle => "LayoutStyle",
+            ProfilerCategory::LayoutBoxTree => "LayoutBoxTree",
+            ProfilerCategory::LayoutFragmentTree => "LayoutFragmentTree",
+            ProfilerCategory::LayoutStackingContext => "LayoutStackingContext",
+            ProfilerCategory::LayoutDisplayList => "LayoutDisplayList",
         }
     }
 }
@@ -218,6 +236,19 @@ where
 
     send_profile_data(category, meta, &profiler_chan, start_time, end_time);
     val
+}
+
+/// CuBit (WEB-001): report a stage duration measured elsewhere (WebRender
+/// reports its scene/frame build and upload times per rendered frame).
+pub fn send_measured_milliseconds(
+    category: ProfilerCategory,
+    profiler_chan: &ProfilerChan,
+    milliseconds: f64,
+) {
+    const MILLISECONDS_PER_SECOND: f64 = 1000.0;
+    let end_time = CrossProcessInstant::now();
+    let start_time = end_time - Duration::seconds_f64(milliseconds / MILLISECONDS_PER_SECOND);
+    send_profile_data(category, None, profiler_chan, start_time, end_time);
 }
 
 pub fn send_profile_data(

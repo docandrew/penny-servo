@@ -1057,10 +1057,20 @@ impl LayoutThread {
 
         let (mut reflow_phases_run, iframe_sizes, changed_web_fonts) = self
             .restyle_and_build_trees(&mut reflow_request, document, root_element, &image_resolver);
-        if self.build_stacking_context_tree_for_reflow(&reflow_request) {
+        if time_profile!(
+            profile_time::ProfilerCategory::LayoutStackingContext,
+            None,
+            self.time_profiler_chan.clone(),
+            || self.build_stacking_context_tree_for_reflow(&reflow_request),
+        ) {
             reflow_phases_run.insert(ReflowPhasesRun::BuiltStackingContextTree);
         }
-        if self.build_display_list(&reflow_request, &image_resolver, &mut reflow_statistics) {
+        if time_profile!(
+            profile_time::ProfilerCategory::LayoutDisplayList,
+            None,
+            self.time_profiler_chan.clone(),
+            || self.build_display_list(&reflow_request, &image_resolver, &mut reflow_statistics),
+        ) {
             reflow_phases_run.insert(ReflowPhasesRun::BuiltDisplayList);
         }
         if self.handle_update_scroll_node_request(&reflow_request) {
@@ -1279,7 +1289,14 @@ impl LayoutThread {
                 return Default::default();
             }
 
-            dirty_root = driver::traverse_dom(&recalc_style_traversal, token, rayon_pool).as_node();
+            // CuBit (WEB-001): per-phase layout timing.
+            dirty_root = time_profile!(
+                profile_time::ProfilerCategory::LayoutStyle,
+                None,
+                self.time_profiler_chan.clone(),
+                || driver::traverse_dom(&recalc_style_traversal, token, rayon_pool),
+            )
+            .as_node();
         }
 
         let root_node = root_element.as_node();
@@ -1304,11 +1321,16 @@ impl LayoutThread {
                 )
             };
 
-            if let Some(pool) = rayon_pool {
-                pool.install(compute_damage_and_build_box_tree)
-            } else {
-                compute_damage_and_build_box_tree()
-            }
+            time_profile!(
+                profile_time::ProfilerCategory::LayoutBoxTree,
+                None,
+                self.time_profiler_chan.clone(),
+                || if let Some(pool) = rayon_pool {
+                    pool.install(compute_damage_and_build_box_tree)
+                } else {
+                    compute_damage_and_build_box_tree()
+                },
+            )
         };
 
         if damage.contains(LayoutDamage::RebuildStackingContextTree) {
@@ -1339,9 +1361,14 @@ impl LayoutThread {
             }
 
             debug_assert!(!layout_roots.is_empty());
-            if layout_roots
-                .iter()
-                .all(|layout_root| layout_root.try_layout(&layout_context))
+            if time_profile!(
+                profile_time::ProfilerCategory::LayoutFragmentTree,
+                None,
+                self.time_profiler_chan.clone(),
+                || layout_roots
+                    .iter()
+                    .all(|layout_root| layout_root.try_layout(&layout_context)),
+            )
             {
                 if self.accessibility_active() {
                     // TODO(#47162) Compute accessibility damage rather than forcing a full update.
@@ -1372,11 +1399,16 @@ impl LayoutThread {
                 .unwrap()
                 .layout(recalc_style_traversal.context(), viewport_size)
         };
-        let fragment_tree = Rc::new(if let Some(pool) = rayon_pool {
-            pool.install(run_layout)
-        } else {
-            run_layout()
-        });
+        let fragment_tree = Rc::new(time_profile!(
+            profile_time::ProfilerCategory::LayoutFragmentTree,
+            None,
+            self.time_profiler_chan.clone(),
+            || if let Some(pool) = rayon_pool {
+                pool.install(run_layout)
+            } else {
+                run_layout()
+            },
+        ));
 
         *self.fragment_tree.borrow_mut() = Some(fragment_tree);
 
