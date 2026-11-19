@@ -3086,6 +3086,7 @@ impl Document {
         self.interactive_time
             .borrow_mut()
             .set_navigation_start(navigation_start);
+        self.navigation_timing.navigation_start.set(Some(navigation_start));
     }
 
     pub(crate) fn get_interactive_metrics(&self) -> Ref<'_, ProgressiveWebMetrics> {
@@ -4458,13 +4459,23 @@ impl Document {
             "domComplete" => self.navigation_timing().dom_complete.get(),
             "loadEventStart" => self.navigation_timing().load_event_start.get(),
             "loadEventEnd" => self.navigation_timing().load_event_end.get(),
-            "redirectStart" | "redirectEnd" | "secureConnectionStart" | "responseEnd" => self
+            "domLoading" => self.navigation_timing().dom_loading.get(),
+            "redirectStart" | "redirectEnd" | "fetchStart" | "domainLookupStart" |
+            "domainLookupEnd" | "connectStart" | "connectEnd" | "secureConnectionStart" |
+            "requestStart" | "responseStart" | "responseEnd" => self
                 .resource_fetch_timing()
                 .as_ref()
                 .and_then(|resource_fetch_timing| match name {
                     "redirectStart" => resource_fetch_timing.redirect_start,
                     "redirectEnd" => resource_fetch_timing.redirect_end,
+                    "fetchStart" => resource_fetch_timing.fetch_start,
+                    "domainLookupStart" => resource_fetch_timing.domain_lookup_start,
+                    "domainLookupEnd" => resource_fetch_timing.domain_lookup_end,
+                    "connectStart" => resource_fetch_timing.connect_start,
+                    "connectEnd" => resource_fetch_timing.connect_end,
                     "secureConnectionStart" => resource_fetch_timing.secure_connection_start,
+                    "requestStart" => resource_fetch_timing.request_start,
+                    "responseStart" => resource_fetch_timing.response_start,
                     "responseEnd" => resource_fetch_timing.response_end,
                     _ => None,
                 }),

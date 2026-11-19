@@ -647,10 +647,25 @@ async fn obtain_response(
         .timing
         .set_attribute(ResourceAttribute::RequestStart);
 
+    let response_timing = context.timing.clone();
     let client_future = client
         .request(request)
         .and_then(move |res| {
             let send_end = CrossProcessInstant::now();
+            if let Some(phases) = res
+                .extensions()
+                .get::<crate::connection_timing::ConnectionTiming>()
+                .and_then(crate::connection_timing::ConnectionTiming::claim)
+            {
+                response_timing.set_attribute(ResourceAttribute::Connection {
+                    domain_lookup_start: phases.domain_lookup_start,
+                    domain_lookup_end: phases.domain_lookup_end,
+                    connect_start: phases.connect_start,
+                    secure_connection_start: phases.secure_connection_start,
+                    connect_end: phases.connect_end,
+                });
+            }
+            response_timing.set_attribute(ResourceAttribute::ResponseStart);
 
             // TODO(#21271) response_start: immediately after receiving first byte of response
 

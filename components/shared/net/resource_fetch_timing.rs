@@ -11,6 +11,7 @@ use servo_base::cross_process_instant::CrossProcessInstant;
 #[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
 pub struct ResourceFetchTiming {
     pub domain_lookup_start: Option<CrossProcessInstant>,
+    pub domain_lookup_end: Option<CrossProcessInstant>,
     pub timing_check_passed: bool,
     pub timing_type: ResourceTimingType,
     /// Number of redirects until final resource (currently limited to 20)
@@ -64,6 +65,14 @@ pub enum ResourceAttribute {
     SecureConnectionStart,
     ResponseEnd,
     StartTime(ResourceTimeValue),
+    /// A new connection's measured phases (net's connection_timing.rs).
+    Connection {
+        domain_lookup_start: Option<CrossProcessInstant>,
+        domain_lookup_end: Option<CrossProcessInstant>,
+        connect_start: Option<CrossProcessInstant>,
+        secure_connection_start: Option<CrossProcessInstant>,
+        connect_end: Option<CrossProcessInstant>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, MallocSizeOf, PartialEq, Serialize)]
@@ -80,6 +89,7 @@ impl ResourceFetchTiming {
             timing_type,
             timing_check_passed: true,
             domain_lookup_start: None,
+            domain_lookup_end: None,
             redirect_count: 0,
             secure_connection_start: None,
             request_start: None,
@@ -109,7 +119,29 @@ impl ResourceFetchTiming {
         }
         let now = Some(CrossProcessInstant::now());
         match attribute {
-            ResourceAttribute::DomainLookupStart => self.domain_lookup_start = now,
+            // Until a new connection's phases replace them, the lookup marks
+            // are equal, as for a reused connection.
+            ResourceAttribute::DomainLookupStart => {
+                self.domain_lookup_start = now;
+                self.domain_lookup_end = now;
+            },
+            ResourceAttribute::Connection {
+                domain_lookup_start,
+                domain_lookup_end,
+                connect_start,
+                secure_connection_start,
+                connect_end,
+            } => {
+                // Without a lookup (an address literal), the lookup marks
+                // equal the connect's start.
+                self.domain_lookup_start = domain_lookup_start.or(connect_start);
+                self.domain_lookup_end = domain_lookup_end.or(connect_start);
+                self.connect_start = connect_start;
+                self.secure_connection_start = secure_connection_start;
+                self.connect_end = connect_end;
+                // The request goes out as soon as its connection is up.
+                self.request_start = connect_end;
+            },
             ResourceAttribute::RedirectCount(count) => self.redirect_count = count,
             ResourceAttribute::RequestStart => self.request_start = now,
             ResourceAttribute::ResponseStart => self.response_start = now,
@@ -150,6 +182,7 @@ impl ResourceFetchTiming {
     pub fn mark_timing_check_failed(&mut self) {
         self.timing_check_passed = false;
         self.domain_lookup_start = None;
+        self.domain_lookup_end = None;
         self.redirect_count = 0;
         self.request_start = None;
         self.response_start = None;

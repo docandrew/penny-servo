@@ -42,12 +42,13 @@ pub const ALPN_H2: &str = "h2";
 
 #[derive(Clone)]
 pub struct ServoHttpConnector {
-    inner: HyperHttpConnector,
+    inner: HyperHttpConnector<crate::connection_timing::TimedResolver>,
 }
 
 impl ServoHttpConnector {
     fn new() -> ServoHttpConnector {
-        let mut inner = HyperHttpConnector::new();
+        let mut inner =
+            HyperHttpConnector::new_with_resolver(crate::connection_timing::TimedResolver::new());
         inner.enforce_http(false);
         inner.set_happy_eyeballs_timeout(None);
         inner.set_connect_timeout(Some(Duration::from_secs(pref!(network_connection_timeout))));
@@ -84,11 +85,25 @@ impl Service<Destination> for ServoHttpConnector {
             }
         }
 
-        Box::pin(
-            self.inner
-                .call(new_dest)
-                .map_err(|e| ConnectionError::HttpError(format!("{e}"))),
-        )
+        let secure = new_dest.scheme_str() == Some("https");
+        let connect = self.inner.call(new_dest);
+        Box::pin(async move {
+            // An address literal has no lookup: the connect starts now.
+            crate::connection_timing::mark(|phases, now| {
+                phases.connect_start.get_or_insert(now);
+            });
+            let stream = connect
+                .await
+                .map_err(|e| ConnectionError::HttpError(format!("{e}")))?;
+            crate::connection_timing::mark(|phases, now| {
+                if secure {
+                    phases.secure_connection_start = Some(now);
+                } else {
+                    phases.connect_end = Some(now);
+                }
+            });
+            Ok(stream)
+        })
     }
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -186,8 +201,10 @@ where
                 permit: None,
             },
             MaybeHttpsStream::Https(tls_stream) => {
-                let (_tcp, tls) = tls_stream.inner().get_ref();
+                let (tcp, tls) = tls_stream.inner().get_ref();
                 let tls_info = TlsHandshakeInfo::from_connection(tls);
+                // The handshake is done: the connect ends (connection_timing.rs).
+                crate::connection_timing::secure_connection_established(&tcp.inner().connected());
 
                 Self {
                     inner: MaybeHttpsStream::Https(tls_stream),
@@ -658,10 +675,18 @@ impl ProxyConnector {
 
 // Just forward everything to the inner type except that we modify the errors returned.
 impl Service<Destination> for ProxyConnector {
-    type Response = TokioIo<TcpStream>;
+    type Response = crate::connection_timing::TimedStream<TokioIo<TcpStream>>;
     type Error = ConnectionError;
-    type Future =
-        std::pin::Pin<Box<dyn Future<Output = Result<TokioIo<TcpStream>, ConnectionError>> + Send>>;
+    type Future = std::pin::Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        crate::connection_timing::TimedStream<TokioIo<TcpStream>>,
+                        ConnectionError,
+                    >,
+                > + Send,
+        >,
+    >;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.client
@@ -670,7 +695,9 @@ impl Service<Destination> for ProxyConnector {
     }
 
     fn call(&mut self, req: Destination) -> Self::Future {
-        match self.matcher.intercept(&req) {
+        let connect: std::pin::Pin<
+            Box<dyn Future<Output = Result<TokioIo<TcpStream>, ConnectionError>> + Send>,
+        > = match self.matcher.intercept(&req) {
             Some(intercept) => {
                 let mut tunnel = Tunnel::new(intercept.uri().clone(), self.client.clone());
                 let final_tunnel = if let Some(auth) = intercept.basic_auth() {
@@ -687,7 +714,12 @@ impl Service<Destination> for ProxyConnector {
                     .call(req)
                     .map_err(|e| ConnectionError::ProxyError(format!("{e}"))),
             ),
-        }
+        };
+        let timing = crate::connection_timing::ConnectionTiming::default();
+        Box::pin(async move {
+            let stream = crate::connection_timing::record(timing.clone(), connect).await?;
+            Ok(crate::connection_timing::TimedStream::new(stream, timing))
+        })
     }
 }
 

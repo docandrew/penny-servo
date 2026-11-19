@@ -103,7 +103,7 @@ impl PerformanceResourceTiming {
             redirect_end: resource_timing.redirect_end,
             fetch_start: resource_timing.fetch_start,
             domain_lookup_start: resource_timing.domain_lookup_start,
-            domain_lookup_end: None,
+            domain_lookup_end: resource_timing.domain_lookup_end,
             connect_start: resource_timing.connect_start,
             connect_end: resource_timing.connect_end,
             secure_connection_start: resource_timing.secure_connection_start,

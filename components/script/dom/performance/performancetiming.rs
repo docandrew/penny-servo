@@ -76,6 +76,26 @@ impl PerformanceTiming {
         (instant - epoch).whole_milliseconds() as u64
     }
 
+    /// One of the document's fetch marks, in milliseconds since the epoch;
+    /// before the document has its fetch timing, the stored value (0).
+    fn fetch_mark(
+        &self,
+        stored: &Cell<u64>,
+        pick: impl FnOnce(&net_traits::ResourceFetchTiming) -> Option<CrossProcessInstant>,
+    ) -> u64 {
+        let global = self.global();
+        let Some(window) = global.downcast::<Window>() else {
+            return stored.get();
+        };
+        let document = window.Document();
+        let timing = document.resource_fetch_timing();
+        let mark = timing.as_ref().map(pick);
+        match mark {
+            Some(instant) => Self::instant_to_millis(instant),
+            None => stored.get(),
+        }
+    }
+
     fn navigation_timing(&self) -> Option<Rc<NavigationTiming>> {
         self.global()
             .downcast::<Window>()
@@ -110,57 +130,57 @@ impl PerformanceTimingMethods<crate::DomTypeHolder> for PerformanceTiming {
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-redirectstart>
     fn RedirectStart(&self) -> u64 {
-        self.redirect_start.get()
+        self.fetch_mark(&self.redirect_start, |timing| timing.redirect_start)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-redirectend>
     fn RedirectEnd(&self) -> u64 {
-        self.redirect_end.get()
+        self.fetch_mark(&self.redirect_end, |timing| timing.redirect_end)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-fetchstart>
     fn FetchStart(&self) -> u64 {
-        self.fetch_start.get()
+        self.fetch_mark(&self.fetch_start, |timing| timing.fetch_start)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-domainlookupstart>
     fn DomainLookupStart(&self) -> u64 {
-        self.domain_lookup_start.get()
+        self.fetch_mark(&self.domain_lookup_start, |timing| timing.domain_lookup_start)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-domainlookupend>
     fn DomainLookupEnd(&self) -> u64 {
-        self.domain_lookup_end.get()
+        self.fetch_mark(&self.domain_lookup_end, |timing| timing.domain_lookup_end)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-connectstart>
     fn ConnectStart(&self) -> u64 {
-        self.connect_start.get()
+        self.fetch_mark(&self.connect_start, |timing| timing.connect_start)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-connectend>
     fn ConnectEnd(&self) -> u64 {
-        self.connect_end.get()
+        self.fetch_mark(&self.connect_end, |timing| timing.connect_end)
     }
 
     /// <https://w3c.github.io/navigation-timing#dom-performancetiming-secureconnectionstart>
     fn SecureConnectionStart(&self) -> u64 {
-        self.secure_connection_start.get()
+        self.fetch_mark(&self.secure_connection_start, |timing| timing.secure_connection_start)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-requeststart>
     fn RequestStart(&self) -> u64 {
-        self.request_start.get()
+        self.fetch_mark(&self.request_start, |timing| timing.request_start)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-responsestart>
     fn ResponseStart(&self) -> u64 {
-        self.response_start.get()
+        self.fetch_mark(&self.response_start, |timing| timing.response_start)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-responseend>
     fn ResponseEnd(&self) -> u64 {
-        self.response_end.get()
+        self.fetch_mark(&self.response_end, |timing| timing.response_end)
     }
 
     /// <https://w3c.github.io/navigation-timing/#dom-performancetiming-domloading>

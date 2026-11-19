@@ -5,6 +5,7 @@
 #![deny(unsafe_code)]
 
 pub mod async_runtime;
+pub mod connection_timing;
 pub mod connector;
 #[cfg(target_os = "cubit")]
 mod connection_limit;
