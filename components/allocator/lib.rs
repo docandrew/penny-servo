@@ -9,7 +9,10 @@ use std::os::raw::c_void;
 
 #[cfg(not(feature = "allocation-tracking"))]
 #[global_allocator]
-static ALLOC: Allocator = Allocator;
+static ALLOC: crate::large_timing::Timed<Allocator> = crate::large_timing::Timed(Allocator);
+
+#[cfg(not(feature = "allocation-tracking"))]
+mod large_timing;
 
 #[cfg(feature = "allocation-tracking")]
 #[global_allocator]
