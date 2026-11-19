@@ -10,6 +10,7 @@
 
 #![deny(unsafe_code)]
 
+pub mod agent_identity;
 pub mod opts;
 pub mod pref_util;
 pub mod prefs;

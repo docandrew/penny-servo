@@ -26,7 +26,6 @@ use regex::Regex;
 use script_bindings::cell::DomRefCell;
 use script_bindings::reflector::{Reflector, reflect_dom_object_with_cx};
 use servo_base::generic_channel;
-use servo_config::pref;
 use servo_url::ServoUrl;
 
 use crate::dom::bindings::codegen::Bindings::NavigatorBinding::NavigatorMethods;
@@ -336,12 +335,17 @@ impl NavigatorMethods<crate::DomTypeHolder> for Navigator {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-navigator-platform>
     fn Platform(&self) -> DOMString {
-        navigatorinfo::Platform()
+        // The presentation for this document's host (agent_identity.rs).
+        servo_config::agent_identity::for_host(self.global().get_url().host_str())
+            .map(|identity| DOMString::from(identity.platform))
+            .unwrap_or_else(navigatorinfo::Platform)
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-navigator-useragent>
     fn UserAgent(&self) -> DOMString {
-        navigatorinfo::UserAgent(&pref!(user_agent))
+        navigatorinfo::UserAgent(&servo_config::agent_identity::user_agent(
+            self.global().get_url().host_str(),
+        ))
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-navigator-appversion>

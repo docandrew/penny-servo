@@ -6,7 +6,6 @@ use dom_struct::dom_struct;
 use js::context::JSContext;
 use js::rust::MutableHandleValue;
 use script_bindings::reflector::{Reflector, reflect_dom_object_with_cx};
-use servo_config::pref;
 
 use crate::dom::bindings::codegen::Bindings::WorkerNavigatorBinding::WorkerNavigatorMethods;
 use crate::dom::bindings::reflector::DomGlobal;
@@ -85,12 +84,17 @@ impl WorkerNavigatorMethods<crate::DomTypeHolder> for WorkerNavigator {
 
     /// <https://html.spec.whatwg.org/multipage/#dom-navigator-platform>
     fn Platform(&self) -> DOMString {
-        navigatorinfo::Platform()
+        // The presentation for this document's host (agent_identity.rs).
+        servo_config::agent_identity::for_host(self.global().get_url().host_str())
+            .map(|identity| DOMString::from(identity.platform))
+            .unwrap_or_else(navigatorinfo::Platform)
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-navigator-useragent>
     fn UserAgent(&self) -> DOMString {
-        navigatorinfo::UserAgent(&pref!(user_agent))
+        navigatorinfo::UserAgent(&servo_config::agent_identity::user_agent(
+            self.global().get_url().host_str(),
+        ))
     }
 
     /// <https://html.spec.whatwg.org/multipage/#dom-navigator-appversion>

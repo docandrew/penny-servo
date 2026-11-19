@@ -453,6 +453,8 @@ mod bench;
 
 mod compat;
 
+mod user_agent;
+
 /// A diagnostic switch: a file in /servo on CuBit (the program's filesystem
 /// scope). Hosted builds read the directory PENNY_FLAGS names instead: that
 /// is the Linux measurement harness only; CuBit programs take no environment.
@@ -653,11 +655,12 @@ fn main() {
     let mut preferences = servo::Preferences::default();
     preferences.network_use_webpki_roots = true;
     preferences.dom_intersection_observer_enabled = true;
-    // Diagnostic (WEB-001 survey): another User-Agent, to tell a site's
-    // reaction to the string apart from an engine or port difference.
-    if let Ok(agent) = std::fs::read_to_string(flag_path("user-agent")) {
-        preferences.user_agent = agent.trim().to_string();
-    }
+    // The User-Agent presentation (user_agent.rs): CuBit's own unless the
+    // user chose another for every site or per host. The preference holds
+    // the global one for anything that reads it directly.
+    let agents = user_agent::load(say);
+    preferences.user_agent = agents.global.user_agent().to_string();
+    agents.install();
     let mut opts = servo::Opts::default();
     if flag("profile-check") {
         // Explicit diagnostic fixture only; retain the existing writable scope.

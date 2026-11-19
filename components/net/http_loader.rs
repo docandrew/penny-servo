@@ -1519,9 +1519,14 @@ async fn http_network_or_cache_fetch(
     // Step 8.15: If httpRequest’s header list does not contain `User-Agent`, then user agents
     // should append (`User-Agent`, default `User-Agent` value) to httpRequest’s header list.
     if !http_request.headers.contains_key(header::USER_AGENT) {
+        // The presentation for this request's host (agent_identity.rs).
+        let user_agent =
+            servo_config::agent_identity::for_host(http_request.current_url().host_str())
+                .map(|identity| identity.user_agent)
+                .unwrap_or_else(|| context.user_agent.clone());
         http_request
             .headers
-            .typed_insert::<UserAgent>(context.user_agent.parse().unwrap());
+            .typed_insert::<UserAgent>(user_agent.parse().unwrap());
     }
 
     // Steps 8.16 to 8.18

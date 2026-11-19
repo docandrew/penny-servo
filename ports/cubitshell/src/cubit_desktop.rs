@@ -58,6 +58,8 @@ unsafe extern "C" {
     fn cubit_servo_stack_check() -> u32;
     fn cubit_servo_memory_owned() -> u64;
     fn cubit_servo_config_scope_check() -> u32;
+    fn cubit_servo_user_agent() -> u32;
+    fn cubit_servo_site_agents(visit: SiteVisit, context: *mut std::ffi::c_void) -> u32;
     fn cubit_servo_open() -> u32;
     fn cubit_servo_select_window(id: u32) -> u32;
     fn cubit_servo_window_error();
@@ -89,6 +91,46 @@ pub fn config_scope_check() -> u32 {
 }
 
 pub fn memory_owned() -> u64 { native(|| unsafe { cubit_servo_memory_owned() }) }
+
+/// Servo_Shell.Site_Agents' visitor: (context, host, host length, presentation).
+type SiteVisit = unsafe extern "C" fn(*mut std::ffi::c_void, *const u8, u32, u32);
+/// Servo_Shell.Agent_Absent (Agent_Unreadable is no presentation's position).
+const AGENT_ABSENT: u32 = 0xFFFF_FFFF;
+
+/// Penny's User-Agent settings (Servo_Agent_Settings): the global
+/// presentation and each host's. An absent setting is Penny's own; one that
+/// cannot be read is said and treated as absent.
+pub fn user_agent_choice() -> crate::user_agent::Choice {
+    use crate::user_agent::{host_key, Choice, Presentation, Site};
+    INIT.call_once(|| native(|| unsafe { servo_shell_hostinit() }));
+    let mut choice = Choice::default();
+    match native(|| unsafe { cubit_servo_user_agent() }) {
+        AGENT_ABSENT => {},
+        position => match Presentation::from_position(position) {
+            Some(presentation) => choice.global = presentation,
+            None => crate::say("CUBITSHELL: browser.servo.user-agent unreadable; Penny's own User-Agent"),
+        },
+    }
+    unsafe extern "C" fn visit(context: *mut std::ffi::c_void, host: *const u8, length: u32, position: u32) {
+        // SAFETY: context is the Vec below, host borrowed for this call.
+        let found = unsafe { &mut *(context as *mut Vec<(String, u32)>) };
+        let host = unsafe { std::slice::from_raw_parts(host, length as usize) };
+        found.push((String::from_utf8_lossy(host).into_owned(), position));
+    }
+    let mut found: Vec<(String, u32)> = Vec::new();
+    let context = &mut found as *mut Vec<(String, u32)> as *mut std::ffi::c_void;
+    if native(|| unsafe { cubit_servo_site_agents(visit, context) }) != 0 {
+        crate::say("CUBITSHELL: browser.servo.site-agent.* not listed; no per-site User-Agent");
+    }
+    for (host, position) in found {
+        match (host_key(&host), Presentation::from_position(position)) {
+            // AGENT_UNREADABLE is no position.
+            (Ok(host), Some(presentation)) => choice.sites.push(Site { host, presentation }),
+            _ => crate::say(&format!("CUBITSHELL: browser.servo.site-agent.{host} unreadable; ignored")),
+        }
+    }
+    choice
+}
 
 /// Every window's status bar says pages cannot show text (Servo's font list
 /// has no usable face). Process-wide: windows opened later show it too.
