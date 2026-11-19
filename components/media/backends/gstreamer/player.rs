@@ -551,6 +551,14 @@ impl GStreamerPlayer {
             .set_config(config)
             .map_err(|e| PlayerError::Backend(e.to_string()))?;
 
+        #[cfg(target_os = "cubit")]
+        if self.audio_renderer.is_none() {
+            let sink = gstreamer::ElementFactory::make("pennyaudiosink")
+                .build()
+                .map_err(|error| PlayerError::Backend(format!("Penny audio output: {error:?}")))?;
+            pipeline.set_property("audio-sink", &sink);
+        }
+
         if let Some(ref audio_renderer) = self.audio_renderer {
             let audio_sink =
                 gstreamer::ElementFactory::make("appsink")
