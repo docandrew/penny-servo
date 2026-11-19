@@ -260,6 +260,23 @@ impl Painter {
                 scene_builder_hooks: Some(Box::new(BoostWebRenderThread)),
                 shared_font_namespace: Some(painter_id.into()),
                 clear_caches_with_quads: !software_gl,
+                #[cfg(target_os = "cubit")]
+                max_internal_texture_size: if software_gl { Some(2048) } else { None },
+                #[cfg(target_os = "cubit")]
+                image_tiling_threshold: if software_gl { 1024 } else { 4096 },
+                #[cfg(target_os = "cubit")]
+                max_shared_surface_size: if software_gl { 1024 } else { 2048 },
+                #[cfg(target_os = "cubit")]
+                texture_cache_config: if software_gl {
+                    webrender::TextureCacheConfig {
+                        color8_linear_texture_size: 1024,
+                        color8_glyph_texture_size: 1024,
+                        alpha8_glyph_texture_size: 1024,
+                        ..webrender::TextureCacheConfig::DEFAULT
+                    }
+                } else {
+                    webrender::TextureCacheConfig::DEFAULT
+                },
                 ..Default::default()
             },
             None,
