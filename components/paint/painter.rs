@@ -227,6 +227,7 @@ impl Painter {
                 .expect("Unable to initialize WebRender worker pool."),
         ));
 
+        let software_gl = webrender_gl.get_string(RENDERER) == "Software WebRender";
         let painter_id = PainterId::next();
         let (mut webrender_renderer, webrender_api_sender) = webrender::create_webrender_instance(
             webrender_gl.clone(),
@@ -258,6 +259,7 @@ impl Painter {
                 render_backend_hooks: Some(Box::new(BoostWebRenderThread)),
                 scene_builder_hooks: Some(Box::new(BoostWebRenderThread)),
                 shared_font_namespace: Some(painter_id.into()),
+                clear_caches_with_quads: !software_gl,
                 ..Default::default()
             },
             None,
