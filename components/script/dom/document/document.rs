@@ -412,6 +412,9 @@ pub(crate) struct Document {
     content_type: Mime,
     last_modified: Option<String>,
     #[no_trace]
+    #[ignore_malloc_size_of = "bounded TLS certificate snapshot"]
+    document_tls: RefCell<Option<embedder_traits::DocumentTlsInfo>>,
+    #[no_trace]
     encoding: Cell<&'static Encoding>,
     has_browsing_context: bool,
     is_html_document: bool,
@@ -1658,11 +1661,19 @@ impl Document {
     }
 
     /// Sends this document's title to the constellation.
+    pub(crate) fn set_document_tls(&self, info: Option<embedder_traits::DocumentTlsInfo>) {
+        *self.document_tls.borrow_mut() = info;
+    }
+
     pub(crate) fn send_title_to_embedder(&self) {
         let window = self.window();
         if window.is_top_level() {
             let title = self.title().map(String::from);
             self.send_to_embedder(EmbedderMsg::ChangePageTitle(self.webview_id(), title));
+            if self.is_fully_active() {
+                self.send_to_embedder(EmbedderMsg::DocumentTls(
+                    self.webview_id(), self.document_tls.borrow().clone()));
+            }
         }
     }
 
@@ -4050,6 +4061,7 @@ impl Document {
             implementation: Default::default(),
             content_type,
             last_modified,
+            document_tls: RefCell::new(None),
             url: DomRefCell::new(url),
             about_base_url: DomRefCell::new(about_base_url),
             quirks_mode: Cell::new(quirks_mode),

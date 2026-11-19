@@ -3616,6 +3616,16 @@ impl ScriptThread {
         //   navigation start time set to navigationParams's response's timing
         //   info's start time.
         document.set_navigation_start(incomplete.navigation_start);
+        document.set_document_tls(metadata.tls_security_info.as_ref().map(|tls| {
+            embedder_traits::DocumentTlsInfo {
+                url: metadata.final_url.to_string(),
+                protocol: tls.protocol_version.as_ref().map(|v| format!("{v:?}")).unwrap_or_default(),
+                cipher: tls.cipher_suite.as_ref().map(|v| format!("{v:?}")).unwrap_or_default(),
+                alpn: tls.alpn_protocol.clone().unwrap_or_default(),
+                certificates: tls.certificate_chain_der.iter().take(8)
+                    .take_while(|der| der.len() <= 65536).cloned().collect(),
+            }
+        }));
 
         let referrer_policy = metadata
             .headers

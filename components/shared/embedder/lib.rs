@@ -8,6 +8,16 @@
 //! is not exposed in the API or doesn't involve messages sent to the embedding/libservo layer, it
 //! is probably a better fit for the `servo_constellation_traits` crate.
 
+/// TLS of a committed top-level document; certificate chain is leaf first.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocumentTlsInfo {
+    pub url: String,
+    pub protocol: String,
+    pub cipher: String,
+    pub alpn: String,
+    pub certificates: Vec<Vec<u8>>,
+}
+
 pub mod embedder_controls;
 pub mod input_events;
 pub mod resources;
@@ -471,6 +481,7 @@ pub enum EmbedderMsg {
     Status(WebViewId, Option<String>),
     /// Alerts the embedder that the current page has changed its title.
     ChangePageTitle(WebViewId, Option<String>),
+    DocumentTls(WebViewId, Option<DocumentTlsInfo>),
     /// Move the window to a point
     MoveTo(WebViewId, DeviceIntPoint),
     /// Resize the window to size

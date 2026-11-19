@@ -494,6 +494,11 @@ impl ServoInner {
                     webview.set_status_text(status_text);
                 }
             },
+            EmbedderMsg::DocumentTls(webview_id, info) => {
+                if let Some(webview) = self.get_webview_handle(webview_id) {
+                    webview.set_document_tls(info);
+                }
+            },
             EmbedderMsg::ChangePageTitle(webview_id, title) => {
                 if let Some(webview) = self.get_webview_handle(webview_id) {
                     webview.set_page_title(title);

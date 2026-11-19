@@ -129,6 +129,7 @@ pub(crate) struct WebViewInner {
     load_status: LoadStatus,
     status_text: Option<String>,
     page_title: Option<String>,
+    document_tls: Option<embedder_traits::DocumentTlsInfo>,
     favicon: Option<Image>,
     focused: bool,
     animating: bool,
@@ -178,6 +179,7 @@ impl WebView {
             load_status: LoadStatus::Started,
             status_text: None,
             page_title: None,
+            document_tls: None,
             favicon: None,
             focused: false,
             animating: false,
@@ -361,6 +363,16 @@ impl WebView {
     ///
     /// The embedder can use [`WebViewDelegate::notify_page_title_changed`] to subscribe
     /// to changes in the [`WebView`]'s page title.
+    pub fn document_tls(&self) -> Option<embedder_traits::DocumentTlsInfo> {
+        self.inner().document_tls.clone()
+    }
+
+    pub(crate) fn set_document_tls(self, info: Option<embedder_traits::DocumentTlsInfo>) {
+        if self.inner().document_tls == info { return; }
+        self.inner_mut().document_tls = info;
+        self.delegate().notify_document_tls_changed(self);
+    }
+
     pub fn page_title(&self) -> Option<String> {
         self.inner().page_title.clone()
     }

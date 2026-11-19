@@ -928,6 +928,7 @@ pub trait WebViewDelegate {
     /// The page title of the currently loaded page in this [`WebView`] has changed. The new
     /// title can accessed via [`WebView::page_title`].
     fn notify_page_title_changed(&self, _webview: WebView, _title: Option<String>) {}
+    fn notify_document_tls_changed(&self, _webview: WebView) {}
     /// The status text of the currently loaded page in this [`WebView`] has changed. The new
     /// status text can accessed via [`WebView::status_text`].
     fn notify_status_text_changed(&self, _webview: WebView, _status: Option<String>) {}
