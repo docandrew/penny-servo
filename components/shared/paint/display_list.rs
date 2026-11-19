@@ -221,6 +221,18 @@ pub struct ReferenceFrameNodeInfo {
 }
 
 /// Data stored for nodes in the [ScrollTree] that actually scroll,
+/// WebRender's id for the explicit scroll frame of a document's viewport.
+/// Fragment-derived scroll ids are node addresses combined with a fragment
+/// type and never reach this value.
+pub const VIEWPORT_WEBRENDER_SCROLL_ID: u64 = u64::MAX;
+
+/// The id WebRender knows a scroll node by: the viewport (Servo's id 0)
+/// is an explicit WebRender scroll frame, distinct from the pipeline root
+/// WebRender creates with id 0 (which must never scroll as well).
+pub fn webrender_scroll_id(id: ExternalScrollId) -> ExternalScrollId {
+    if id.0 == 0 { ExternalScrollId(VIEWPORT_WEBRENDER_SCROLL_ID, id.1) } else { id }
+}
+
 /// as opposed to reference frames and sticky nodes which do not.
 #[derive(Clone, Debug, Deserialize, MallocSizeOf, Serialize)]
 pub struct ScrollableNodeInfo {

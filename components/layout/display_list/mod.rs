@@ -296,7 +296,30 @@ impl DisplayListBuilder<'_> {
         let mut mapping = Vec::with_capacity(scroll_tree.nodes.len());
 
         mapping.push(SpatialId::root_reference_frame(self.pipeline_id()));
-        mapping.push(SpatialId::root_scroll_node(self.pipeline_id()));
+        // The viewport scrolls as an explicit scroll frame under the pipeline
+        // root, so WebRender slices the picture cache in scrolled space
+        // (userspace/servo/scroll_root.py).
+        let viewport = match scroll_tree.nodes.get(1).map(|node| &node.info) {
+            Some(SpatialTreeNodeInfo::Scroll(info)) => Some((
+                paint_api::display_list::webrender_scroll_id(info.external_id),
+                info.content_rect,
+                info.clip_rect,
+            )),
+            _ => None,
+        };
+        let pipeline_root = SpatialId::root_scroll_node(self.pipeline_id());
+        mapping.push(match viewport {
+            Some((external_id, content_rect, clip_rect)) => self.wr().define_scroll_frame(
+                pipeline_root,
+                external_id,
+                content_rect,
+                clip_rect,
+                LayoutVector2D::zero(), /* external_scroll_offset */
+                0,                      /* scroll_offset_generation */
+                wr::HasScrollLinkedEffect::No,
+            ),
+            None => pipeline_root,
+        });
 
         for node in scroll_tree.nodes.iter().skip(2) {
             let parent_scroll_node_id = node
@@ -321,7 +344,7 @@ impl DisplayListBuilder<'_> {
                 SpatialTreeNodeInfo::Scroll(info) => {
                     self.wr().define_scroll_frame(
                         *parent_spatial_node_id,
-                        info.external_id,
+                        paint_api::display_list::webrender_scroll_id(info.external_id),
                         info.content_rect,
                         info.clip_rect,
                         LayoutVector2D::zero(), /* external_scroll_offset */

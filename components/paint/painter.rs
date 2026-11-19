@@ -805,7 +805,7 @@ impl Painter {
                         continue;
                     }
                     transaction.set_scroll_offsets(
-                        external_id,
+                        paint_api::display_list::webrender_scroll_id(external_id),
                         vec![SampledScrollOffset {
                             offset,
                             generation: 0,
@@ -831,7 +831,7 @@ impl Painter {
         }
         for update in scroll_offset_updates {
             transaction.set_scroll_offsets(
-                update.external_scroll_id,
+                paint_api::display_list::webrender_scroll_id(update.external_scroll_id),
                 vec![SampledScrollOffset {
                     offset: update.offset,
                     generation: 0,
@@ -1012,7 +1012,7 @@ impl Painter {
 
         let mut transaction = Transaction::new();
         transaction.set_scroll_offsets(
-            external_scroll_id,
+            paint_api::display_list::webrender_scroll_id(external_scroll_id),
             vec![SampledScrollOffset {
                 offset,
                 generation: 0,
