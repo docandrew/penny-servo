@@ -937,8 +937,11 @@ impl WindowProxy {
                     .expect("Must always be fully active"),
             ))
         } else if let Some(parent_proxy) = self.parent() {
-            // Step 4. Assert: parentDoc is fully active.
-            assert!(parent_proxy.currently_active().is_some());
+            // A parent can be suspended by navigation while this document's
+            // response is still being processed. As with the same-thread
+            // frame-element branch above, unavailable parent state yields no
+            // ancestor-origin snapshot. The lookup already handles None and
+            // failed constellation replies; do not invent a parent origin.
             parent_proxy.document_origin_and_internal_ancestor_origin_objects_list()
         } else {
             None
