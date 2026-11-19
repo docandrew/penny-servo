@@ -672,6 +672,18 @@ pub trait ClientStorageThreadFactory {
 impl ClientStorageThreadFactory for ClientStorageThreadHandle {
     fn new(config_dir: Option<PathBuf>, temporary_storage: bool) -> ClientStorageThreadHandle {
         let (generic_sender, generic_receiver) = generic_channel::channel().unwrap();
+        #[cfg(target_os = "cubit")]
+        if config_dir.is_none() {
+            let sender_clone = generic_sender.clone();
+            thread::Builder::new()
+                .name("ClientStorageThread".to_owned())
+                .spawn(move || {
+                    let engine = SqliteEngine::memory().unwrap();
+                    ClientStorageThread::new(sender_clone, generic_receiver, engine).start();
+                })
+                .expect("Thread spawning failed");
+            return ClientStorageThreadHandle::new(generic_sender);
+        }
         let mut temp_dir: Option<tempfile::TempDir> = None;
         let base_dir = config_dir
             .unwrap_or_else(|| {
