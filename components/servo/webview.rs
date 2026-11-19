@@ -324,6 +324,7 @@ impl WebView {
     }
 
     pub(crate) fn set_load_status(self, new_value: LoadStatus) {
+        if new_value == LoadStatus::Started { self.inner_mut().document_tls = None; }
         if self.inner().load_status == new_value {
             return;
         }
@@ -552,6 +553,7 @@ impl WebView {
     /// This pushes a new entry onto the navigation history, so the user can navigate
     /// back to the previous page.
     pub fn load_request(&self, url_request: UrlRequest) {
+        self.clone().set_load_status(LoadStatus::Started);
         self.servo()
             .constellation_proxy()
             .send(EmbedderToConstellationMessage::LoadUrl(
