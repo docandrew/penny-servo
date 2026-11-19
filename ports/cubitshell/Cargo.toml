@@ -34,6 +34,8 @@ servo = { workspace = true, features = ["webcrypto"] }
 surfman = { workspace = true }
 swgl = "0.70"
 url = { workspace = true }
+# Penny's cryptography (WEB-004), hosted and on CuBit.
+penny-crypto = { workspace = true }
 
 [target.'cfg(target_os = "cubit")'.dependencies]
 # Expanded by patch_servo.py for the selected Servo checkout. Use the same
@@ -41,7 +43,6 @@ url = { workspace = true }
 servo-base = { workspace = true }
 profile_traits = { workspace = true }
 gstreamer = { workspace = true, optional = true }
-penny-crypto = { workspace = true }
 time = { workspace = true }
 cubit-fonts = { path = "../../cubit-build/fonts" }
 # The font list's status (no usable face is a visible error, never blank text).
