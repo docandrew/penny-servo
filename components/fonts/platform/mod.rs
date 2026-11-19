@@ -21,14 +21,14 @@ use unicode_script::Script;
     not(target_env = "ohos")
 ))]
 use crate::FallbackFontSelectionOptions;
-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "cubit"))]
 pub use crate::platform::freetype::{font, font_list};
 #[cfg(target_os = "macos")]
 pub use crate::platform::macos::{core_text_font_cache, font, font_list};
 #[cfg(target_os = "windows")]
 pub use crate::platform::windows::{font, font_list};
 
-#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "cubit"))]
 pub mod freetype;
 
 #[cfg(target_os = "macos")]

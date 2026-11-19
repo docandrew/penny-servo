@@ -4,6 +4,8 @@
 
 use malloc_size_of_derive::MallocSizeOf;
 pub use platform::LocalFontIdentifier;
+#[cfg(target_os = "cubit")]
+pub use platform::CubitFace;
 use serde::{Deserialize, Serialize};
 use servo_url::ServoUrl;
 use uuid::Uuid;
@@ -20,6 +22,68 @@ impl FontIdentifier {
         match *self {
             Self::Local(ref local_font_identifier) => local_font_identifier.index(),
             Self::Web(_) | Self::ArrayBuffer(_) => 0,
+        }
+    }
+}
+
+#[cfg(target_os = "cubit")]
+mod platform {
+    use malloc_size_of_derive::MallocSizeOf;
+    use serde::{Deserialize, Serialize};
+
+    use crate::{FontData, FontDataAndIndex};
+
+    /// A face Penny links (cubit-fonts' bundled faces).
+    #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize)]
+    pub enum CubitFace {
+        Sans,
+        SansSemibold,
+        Mono,
+    }
+
+    impl CubitFace {
+        pub const ALL: [CubitFace; 3] = [Self::Sans, Self::SansSemibold, Self::Mono];
+
+        /// The face's font file (one face per file).
+        pub fn bytes(self) -> &'static [u8] {
+            match self {
+                Self::Sans => cubit_fonts::BundledFace::Sans,
+                Self::SansSemibold => cubit_fonts::BundledFace::SansSemibold,
+                Self::Mono => cubit_fonts::BundledFace::Mono,
+            }
+            .bytes()
+        }
+    }
+
+    /// An identifier for a local font on CuBit.
+    #[derive(Clone, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize)]
+    pub struct LocalFontIdentifier {
+        pub face: CubitFace,
+    }
+
+    impl LocalFontIdentifier {
+        pub fn index(&self) -> u32 {
+            0
+        }
+
+        pub fn named_instance_index(&self) -> u32 {
+            0
+        }
+
+        pub fn face_index_for_freetype(&self) -> u32 {
+            0
+        }
+
+        /// The face's bytes, which every CuBit local font has.
+        pub fn data_and_index(&self) -> FontDataAndIndex {
+            FontDataAndIndex {
+                data: FontData::from_bytes(self.face.bytes()),
+                index: self.index(),
+            }
+        }
+
+        pub fn font_data_and_index(&self) -> Option<FontDataAndIndex> {
+            Some(self.data_and_index())
         }
     }
 }

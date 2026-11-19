@@ -32,6 +32,9 @@ stylo = { workspace = true }
 uuid = { workspace = true }
 webrender_api = { workspace = true }
 
+[target.'cfg(target_os = "cubit")'.dependencies]
+cubit-fonts = { path = "../../../cubit-build/fonts" }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 dwrote = { workspace = true }
 

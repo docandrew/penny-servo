@@ -76,7 +76,7 @@ objc2-core-foundation = { workspace = true }
 objc2-core-graphics = { workspace = true }
 objc2-core-text = { workspace = true }
 
-[target.'cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))'.dependencies]
+[target.'cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "cubit"))'.dependencies]
 freetype-sys = { workspace = true }
 harfbuzz-sys = { workspace = true, features = ["freetype"] }
 servo-allocator = { workspace = true }
@@ -87,8 +87,8 @@ fontconfig_sys = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 xml = { workspace = true }
 
-[target.'cfg(any(target_os = "android",target_env = "ohos"))'.dependencies]
-# Always bundle freetype on android and openharmony
+[target.'cfg(any(target_os = "android",target_env = "ohos", target_os = "cubit"))'.dependencies]
+# Always bundle freetype on android, openharmony and CuBit
 freetype-sys = { workspace = true, features = ["bundled"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

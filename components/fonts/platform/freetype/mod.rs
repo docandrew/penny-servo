@@ -27,4 +27,11 @@ mod ohos {
 #[cfg(any(target_env = "ohos", ohos_mock))]
 pub use self::ohos::font_list;
 
+#[cfg(target_os = "cubit")]
+mod cubit {
+    pub mod font_list;
+}
+#[cfg(target_os = "cubit")]
+pub use self::cubit::font_list;
+
 mod library_handle;
