@@ -37,9 +37,36 @@ impl AsyncRuntime for AsyncRuntimeHolder {
 /// to be initialized on start-up.
 static ASYNC_RUNTIME_HANDLE: OnceLock<Handle> = OnceLock::new();
 
+/// Penny on CuBit: tokio's blocking pool (every DNS lookup through hyper's
+/// resolver, file reads) at most this many threads, well inside the
+/// kernel's per-process thread limit (MAX_THREADS_PER_PROCESS, 128) beside
+/// Servo's own threads; tokio's default is 512.
+#[cfg(target_os = "cubit")]
+const CUBIT_BLOCKING_THREADS: usize = 16;
+
+/// Penny on CuBit: the runtime's live threads (workers and blocking), and
+/// the most seen; each new peak is one PENNY-THREADS line (WEB-001).
+#[cfg(target_os = "cubit")]
+static TOKIO_THREADS_LIVE: AtomicUsize = AtomicUsize::new(0);
+#[cfg(target_os = "cubit")]
+static TOKIO_THREADS_PEAK: AtomicUsize = AtomicUsize::new(0);
+
 pub fn init_async_runtime() -> Box<dyn AsyncRuntime> {
     // Initialize a tokio runtime.
-    let runtime = Builder::new_multi_thread()
+    let mut builder = Builder::new_multi_thread();
+    #[cfg(target_os = "cubit")]
+    builder
+        .max_blocking_threads(CUBIT_BLOCKING_THREADS)
+        .on_thread_start(|| {
+            let live = TOKIO_THREADS_LIVE.fetch_add(1, Ordering::Relaxed) + 1;
+            if live > TOKIO_THREADS_PEAK.fetch_max(live, Ordering::Relaxed) {
+                eprintln!("PENNY-THREADS tokio peak={live} blocking_limit={CUBIT_BLOCKING_THREADS}");
+            }
+        })
+        .on_thread_stop(|| {
+            TOKIO_THREADS_LIVE.fetch_sub(1, Ordering::Relaxed);
+        });
+    let runtime = builder
         .thread_name_fn(|| {
             static ATOMIC_ID: AtomicUsize = AtomicUsize::new(0);
             let id = ATOMIC_ID.fetch_add(1, Ordering::Relaxed);
