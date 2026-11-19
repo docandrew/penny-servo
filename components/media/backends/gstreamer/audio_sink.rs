@@ -248,6 +248,8 @@ impl AudioSink for GStreamerAudioSink {
 
 impl Drop for GStreamerAudioSink {
     fn drop(&mut self) {
-        let _ = self.stop();
+        // Paused pipelines retain streaming resources; destruction must also
+        // release the device/session held by the output sink.
+        let _ = self.pipeline.set_state(gstreamer::State::Null);
     }
 }

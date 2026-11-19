@@ -668,10 +668,11 @@ impl GStreamerPlayer {
             let _ = notify!(observer, PlayerEvent::Error(error.to_string()));
         });
 
-        let inner_clone = inner.clone();
+        let inner_clone = Arc::downgrade(inner);
         let observer = self.observer.clone();
         // Handle `state-changed` signal.
         signal_adapter.connect_state_changed(move |_, play_state| {
+            let Some(inner_clone) = inner_clone.upgrade() else { return; };
             inner_clone.lock().unwrap().play_state = play_state;
 
             let state = match play_state {
@@ -701,13 +702,14 @@ impl GStreamerPlayer {
         });
 
         // Handle `media-info-updated` signal.
-        let inner_clone = inner.clone();
+        let inner_clone = Arc::downgrade(inner);
         let observer = self.observer.clone();
         signal_adapter.connect_media_info_updated(move |_, info| {
             let Ok(metadata) = metadata_from_media_info(info) else {
                 return;
             };
 
+            let Some(inner_clone) = inner_clone.upgrade() else { return; };
             let mut inner = inner_clone.lock().unwrap();
 
             if inner.last_metadata.as_ref() == Some(&metadata) {
@@ -745,7 +747,7 @@ impl GStreamerPlayer {
         });
 
         // Handle `duration-changed` signal.
-        let inner_clone = inner.clone();
+        let inner_clone = Arc::downgrade(inner);
         let observer = self.observer.clone();
         signal_adapter.connect_duration_changed(move |_, duration| {
             let duration = duration.map(|duration| {
@@ -755,6 +757,7 @@ impl GStreamerPlayer {
                 )
             });
 
+            let Some(inner_clone) = inner_clone.upgrade() else { return; };
             let mut inner = inner_clone.lock().unwrap();
             if let Some(ref mut metadata) = inner.last_metadata &&
                 metadata.duration != duration
@@ -822,7 +825,7 @@ impl GStreamerPlayer {
         };
 
         let (receiver, error_handler_id) = {
-            let inner_clone = inner.clone();
+            let inner_clone = Arc::downgrade(inner);
             let inner = inner.lock().unwrap();
             let pipeline = inner.player.pipeline();
 
@@ -835,6 +838,7 @@ impl GStreamerPlayer {
             pipeline.connect("source-setup", false, move |args| {
                 let source = args[1].get::<gstreamer::Element>().unwrap();
 
+                let Some(inner_clone) = inner_clone.upgrade() else { return None; };
                 let mut inner = inner_clone.lock().unwrap();
                 let source = match inner.stream_type {
                     StreamType::Seekable => {
@@ -852,7 +856,7 @@ impl GStreamerPlayer {
                         let observer_ = observer.clone();
                         let observer__ = observer.clone();
                         let observer___ = observer.clone();
-                        let servosrc_ = servosrc.clone();
+                        let weak_servosrc = servosrc.downgrade();
                         let enough_data_ = inner.enough_data.clone();
                         let enough_data__ = inner.enough_data.clone();
                         let seek_channel = Arc::new(Mutex::new(SeekChannel::new()));
@@ -876,6 +880,7 @@ impl GStreamerPlayer {
                                     let _ = notify!(observer__, PlayerEvent::EnoughData);
                                 })
                                 .seek_data(move |_, offset| {
+                                    let Some(servosrc_) = weak_servosrc.upgrade() else { return false; };
                                     let (ret, ack_channel) = if servosrc_.set_seek_offset(offset) {
                                         let _ = notify!(
                                             observer___,
