@@ -281,6 +281,12 @@ impl SystemFontService {
                 let FontIdentifier::Local(local_font_identifier) = identifier else {
                     unreachable!("Should never have a web font in the system font service");
                 };
+                #[cfg(target_os = "cubit")]
+                {
+                    let data = local_font_identifier.data_and_index();
+                    paint_api.add_font(font_key, data.data.as_ipc_shared_memory(), data.index);
+                }
+                #[cfg(not(target_os = "cubit"))]
                 paint_api.add_system_font(font_key, local_font_identifier.native_font_handle());
                 font_key
             });

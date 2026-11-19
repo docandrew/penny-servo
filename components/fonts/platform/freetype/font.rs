@@ -93,6 +93,22 @@ impl PlatformFontMethods for PlatformFont {
         })
     }
 
+    #[cfg(target_os = "cubit")]
+    fn new_from_local_font_identifier(
+        font_identifier: LocalFontIdentifier,
+        requested_size: Option<Au>,
+        synthetic_bold: bool,
+    ) -> Result<PlatformFont, &'static str> {
+        let data = font_identifier.data_and_index().data;
+        Self::new_from_data(
+            FontIdentifier::Local(font_identifier),
+            &data,
+            requested_size,
+            synthetic_bold,
+        )
+    }
+
+    #[cfg(not(target_os = "cubit"))]
     fn new_from_local_font_identifier(
         font_identifier: LocalFontIdentifier,
         requested_size: Option<Au>,
