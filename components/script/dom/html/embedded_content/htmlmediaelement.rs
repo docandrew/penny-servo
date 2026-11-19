@@ -2543,6 +2543,11 @@ impl HTMLMediaElement {
                 warn!("Could not set mute state: {error:?}");
             }
 
+            // The element may receive volume before its backend player exists.
+            if let Err(error) = player_guard.set_volume(self.volume.get()) {
+                warn!("Could not set initial volume: {error:?}");
+            }
+
             let id = player_guard.get_id();
             if shared_player_id.set(id).is_err() {
                 error!("Error setting player id. Already set?");
