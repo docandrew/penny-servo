@@ -1960,6 +1960,12 @@ impl HTMLMediaElement {
                     // Step 5. Fire an event named error at the media element.
                     this.upcast::<EventTarget>().fire_event(cx, atom!("error"));
 
+                    // The error handler (including its promise microtasks) may load
+                    // a new resource. Never stop that replacement player.
+                    if generation_id != this.generation_id.get() {
+                        return;
+                    }
+
                     if let Some(ref player) = *this.player.borrow()
                         && let Err(error) = player.lock().unwrap().stop() {
                             error!("Could not stop player: {error:?}");
@@ -1969,6 +1975,12 @@ impl HTMLMediaElement {
                     // DOMException.
                     // Done after running this closure in `fulfill_in_flight_play_promises`.
                 });
+
+                // An error handler may have started another load, whose load-event
+                // delay belongs to that new generation.
+                if generation_id != this.generation_id.get() {
+                    return;
+                }
 
                 // Step 7. Set the element's delaying-the-load-event flag to false. This stops
                 // delaying the load event.
