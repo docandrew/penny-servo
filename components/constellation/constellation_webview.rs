@@ -184,6 +184,22 @@ impl ConstellationWebView {
         pipelines: &FxHashMap<PipelineId, Pipeline>,
         browsing_contexts: &FxHashMap<BrowsingContextId, BrowsingContext>,
     ) -> bool {
+        // Cancellation has no hit test: a resize or frame transition may have
+        // removed the original target. Reset every document owned by this view,
+        // including an old frame which still retains capture or a pressed state.
+        // It uses the same paint/constellation input path as presses, preserving
+        // order. Give each additional delivery its own acknowledgment identity.
+        if matches!(event.event.event, InputEvent::MouseCancel) {
+            let mut sent = false;
+            for pipeline in pipelines.values().filter(|p| p.webview_id == self.webview_id) {
+                let mut reset = event.clone();
+                if sent { reset.event = InputEvent::MouseCancel.into(); }
+                if pipeline.event_loop.send(ScriptThreadMessage::SendInputEvent(
+                    self.webview_id, pipeline.id, reset,
+                )).is_ok() { sent = true; }
+            }
+            return sent;
+        }
         let Some(pipeline_id) = self.target_pipeline_id_for_input_event(&event, browsing_contexts)
         else {
             warn!("Unknown pipeline for input event. Ignoring.");

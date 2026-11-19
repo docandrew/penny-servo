@@ -173,6 +173,9 @@ pub(crate) struct DocumentEventHandler {
     /// having no mouse buttons pressed to having any and vice-versa.
     #[no_trace]
     mouse_button_state: Cell<MouseButtons>,
+    // Retained only during a mouse gesture, for cancellation without a hit test.
+    last_pressed_mouse_event: MutNullableDom<MouseEvent>,
+    last_pressed_mouse_target: MutNullableDom<EventTarget>,
     /// The element that is currently hovered by the cursor.
     current_hover_target: MutNullableDom<Element>,
     /// The element that was most recently activated during a mouse button press or touch
@@ -222,6 +225,8 @@ impl DocumentEventHandler {
             click_counting_info: Default::default(),
             last_mouse_button_down_point: Default::default(),
             mouse_button_state: Cell::new(MouseButtons::empty()),
+            last_pressed_mouse_event: Default::default(),
+            last_pressed_mouse_target: Default::default(),
             current_hover_target: Default::default(),
             current_active_element: Default::default(),
             most_recently_clicked_element: Default::default(),
@@ -241,6 +246,14 @@ impl DocumentEventHandler {
     /// Note a pending input event, to be processed at the next `update_the_rendering` task.
     pub(crate) fn note_pending_input_event(&self, event: ConstellationInputEvent) {
         let mut pending_input_events = self.pending_input_events.borrow_mut();
+        // Coalescing cannot move motion or scrolling across a button, cancel,
+        // focus, or other input boundary.
+        if !matches!(event.event.event, InputEvent::MouseMove(..)) {
+            *self.mouse_move_event_index.borrow_mut() = None;
+        }
+        if !matches!(event.event.event, InputEvent::Wheel(..)) {
+            *self.wheel_event_index.borrow_mut() = None;
+        }
         if matches!(event.event.event, InputEvent::MouseMove(..)) {
             // First try to replace any existing mouse move event.
             if let Some(mouse_move_event) = self
@@ -343,6 +356,10 @@ impl DocumentEventHandler {
             let result = match event.event.event {
                 InputEvent::MouseButton(mouse_button_event) => {
                     self.handle_native_mouse_button_event(cx, mouse_button_event, &event);
+                    InputEventResult::default()
+                },
+                InputEvent::MouseCancel => {
+                    self.cancel_mouse_gesture(cx);
                     InputEventResult::default()
                 },
                 InputEvent::MouseMove(_) => {
@@ -454,6 +471,27 @@ impl DocumentEventHandler {
             self.window.webview_id(),
             cursor.unwrap_or_default(),
         ));
+    }
+
+    fn cancel_mouse_gesture(&self, cx: &mut JSContext) {
+        let mouse_event = self.last_pressed_mouse_event.get();
+        let target = self.get_pointer_capture_target(PointerId::Mouse as i32)
+            .map(DomRoot::upcast::<EventTarget>)
+            .or_else(|| self.last_pressed_mouse_target.get());
+        // Clear before invoking script: cancellation handlers cannot recapture
+        // a pointer whose buttons are no longer pressed.
+        self.last_pressed_mouse_event.set(None);
+        self.last_pressed_mouse_target.set(None);
+        self.last_mouse_button_down_point.set(None);
+        self.mouse_button_state.set(MouseButtons::empty());
+        self.unset_active_element();
+        *self.drag_gesture.safe_borrow_mut(cx.no_gc()) = None;
+        *self.click_counting_info.safe_borrow_mut(cx.no_gc()) = Default::default();
+        if let (Some(mouse_event), Some(target)) = (mouse_event, target) {
+            mouse_event.to_pointer_event(cx, Atom::from("pointercancel"))
+                .upcast::<Event>().fire(cx, &target);
+        }
+        self.implicit_release_pointer_capture(cx, PointerId::Mouse as i32, "mouse", true);
     }
 
     fn handle_mouse_left_viewport_event(
@@ -779,6 +817,10 @@ impl DocumentEventHandler {
             .map(DomRoot::upcast::<EventTarget>)
             .unwrap_or_else(|| DomRoot::from_ref(new_target.upcast::<EventTarget>()));
 
+        if !self.mouse_button_state.get().is_empty() {
+            self.last_pressed_mouse_event.set(Some(&mouse_event));
+            self.last_pressed_mouse_target.set(Some(&pointer_target));
+        }
         let pointer_event = mouse_event.to_pointer_event(cx, Atom::from("pointermove"));
         pointer_event.upcast::<Event>().set_composed(true);
         pointer_event.upcast::<Event>().fire(cx, &pointer_target);
@@ -1042,6 +1084,8 @@ impl DocumentEventHandler {
                     .map(DomRoot::upcast::<EventTarget>)
                     .unwrap_or_else(|| DomRoot::from_ref(node.upcast::<EventTarget>()));
 
+                self.last_pressed_mouse_event.set(Some(&mouse_event));
+                self.last_pressed_mouse_target.set(Some(&pointer_target));
                 // Update button state before firing so setPointerCapture works in handler.
                 self.mouse_button_state
                     .set(input_event.pressed_mouse_buttons);
@@ -1132,6 +1176,13 @@ impl DocumentEventHandler {
                 self.mouse_button_state
                     .set(input_event.pressed_mouse_buttons);
 
+                if input_event.pressed_mouse_buttons.is_empty() {
+                    self.last_pressed_mouse_event.set(None);
+                    self.last_pressed_mouse_target.set(None);
+                } else {
+                    self.last_pressed_mouse_event.set(Some(&mouse_event));
+                    self.last_pressed_mouse_target.set(Some(&pointer_target));
+                }
                 // Process pending pointer capture after decrementing button count, but skip
                 // if we just released a disconnected capture to avoid immediately re-capturing.
                 // https://w3c.github.io/pointerevents/#process-pending-pointer-capture

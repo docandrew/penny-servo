@@ -329,6 +329,7 @@ impl MouseEvent {
         let is_pointer_down = &*event_type == "pointerdown";
         let is_pointer_move = &*event_type == "pointermove";
         let is_pointer_up = &*event_type == "pointerup";
+        let is_pointer_cancel = &*event_type == "pointercancel";
 
         // Pressure is 0.5 when button is down, 0.0 when up
         let pressure = if is_pointer_down || (is_pointer_move && !self.buttons.get().is_empty()) {
@@ -356,7 +357,8 @@ impl MouseEvent {
             window,
             event_type,
             EventBubbles::from(self.upcast::<Event>().Bubbles()),
-            EventCancelable::from(self.upcast::<Event>().Cancelable()),
+            if is_pointer_cancel { EventCancelable::NotCancelable }
+            else { EventCancelable::from(self.upcast::<Event>().Cancelable()) },
             self.uievent.GetView().as_deref(),
             self.uievent.Detail(),
             Point2D::new(self.ScreenX(), self.ScreenY()),
@@ -364,7 +366,7 @@ impl MouseEvent {
             Point2D::new(self.PageX(), self.PageY()),
             self.modifiers.get(),
             button,
-            self.buttons.get(),
+            if is_pointer_cancel { MouseButtons::empty() } else { self.buttons.get() },
             self.GetRelatedTarget().as_deref(),
             self.point_in_target.get(),
             PointerId::Mouse as i32, // Mouse pointer ID is always -1

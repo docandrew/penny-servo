@@ -102,6 +102,7 @@ mod from_embedder {
                 InputEvent::Keyboard(..) => target_variant!("Keyboard"),
                 InputEvent::MouseButton(..) => target_variant!("MouseButton"),
                 InputEvent::MouseMove(..) => target_variant!("MouseMove"),
+                InputEvent::MouseCancel => target_variant!("MouseCancel"),
                 InputEvent::MouseLeftViewport(..) => target_variant!("MouseLeftViewport"),
                 InputEvent::Touch(..) => target_variant!("Touch"),
                 InputEvent::Wheel(..) => target_variant!("Wheel"),

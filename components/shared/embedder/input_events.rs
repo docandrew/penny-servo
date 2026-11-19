@@ -57,6 +57,8 @@ pub enum InputEvent {
     Ime(ImeEvent),
     Keyboard(KeyboardEvent),
     MouseButton(MouseButtonEvent),
+    /// Cancel the mouse gesture without synthesizing a release or activation.
+    MouseCancel,
     MouseLeftViewport(MouseLeftViewportEvent),
     MouseMove(MouseMoveEvent),
     Touch(TouchEvent),
@@ -137,7 +139,7 @@ impl InputEvent {
             InputEvent::Keyboard(..) => None,
             InputEvent::MouseButton(event) => Some(event.point),
             InputEvent::MouseMove(event) => Some(event.point),
-            InputEvent::MouseLeftViewport(_) => None,
+            InputEvent::MouseLeftViewport(_) | InputEvent::MouseCancel => None,
             InputEvent::Touch(event) => Some(event.point),
             InputEvent::Wheel(event) => Some(event.point),
         }

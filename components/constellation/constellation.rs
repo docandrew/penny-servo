@@ -3297,6 +3297,9 @@ where
         if let InputEvent::MouseButton(event) = &event.event {
             self.update_pressed_mouse_buttons(event);
         }
+        if matches!(event.event, InputEvent::MouseCancel) {
+            self.pressed_mouse_buttons = MouseButtons::empty();
+        }
 
         if let InputEvent::Keyboard(event) = &event.event {
             self.update_active_keybord_modifiers(event);
