@@ -18,6 +18,9 @@ pub(crate) fn load_script(head: &HTMLHeadElement) {
     let win = DomRoot::from_ref(doc.window());
     doc.add_delayed_task(task!(UserScriptExecute: |cx, win: DomRoot<Window>| {
         let global_scope = win.as_global_scope();
+        if !global_scope.can_run_script() {
+            return;
+        }
         let mut realm = enter_auto_realm(cx, global_scope);
         let cx = &mut realm.current_realm();
 

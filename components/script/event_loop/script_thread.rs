@@ -4495,6 +4495,17 @@ impl ScriptThread {
         };
 
         let global_scope = window.as_global_scope();
+        if !global_scope.can_run_script() {
+            let _ = self.senders.pipeline_to_constellation_sender.send((
+                webview_id,
+                pipeline_id,
+                ScriptToConstellationMessage::FinishJavaScriptEvaluation(
+                    evaluation_id,
+                    Err(JavaScriptEvaluationError::EvaluationFailure(None)),
+                ),
+            ));
+            return;
+        }
         let mut realm = enter_auto_realm(cx, global_scope);
         let cx = &mut realm.current_realm();
 
