@@ -12,6 +12,7 @@ pub(crate) mod htmliframeelement;
 pub(crate) mod htmlimageelement;
 pub(crate) mod htmlmapelement;
 pub(crate) mod htmlmediaelement;
+pub(crate) mod media_player_budget;
 pub(crate) mod htmlobjectelement;
 pub(crate) mod htmlparamelement;
 pub(crate) mod htmlpictureelement;

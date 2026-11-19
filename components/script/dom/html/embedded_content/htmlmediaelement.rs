@@ -77,6 +77,7 @@ use crate::dom::bindings::reflector::DomGlobal;
 use crate::dom::bindings::root::{Dom, DomRoot, MutNullableDom, UnrootedDom};
 use crate::dom::bindings::str::{DOMString, USVString};
 use crate::dom::blob::Blob;
+use super::media_player_budget::{self, PlayerSlot};
 use crate::dom::csp::{GlobalCspReporting, Violation};
 use crate::dom::document::Document;
 use crate::dom::element::attributes::storage::AttrRef;
@@ -555,6 +556,11 @@ pub(crate) struct HTMLMediaElement {
     #[ignore_malloc_size_of = "servo_media"]
     #[no_trace]
     player: DomRefCell<Option<Arc<Mutex<dyn Player>>>>,
+    /// The player's share of the process's bound on live players (Penny,
+    /// media_player_budget.rs).
+    #[ignore_malloc_size_of = "bookkeeping"]
+    #[no_trace]
+    player_slot: DomRefCell<Option<PlayerSlot>>,
     #[conditional_malloc_size_of]
     #[no_trace]
     video_renderer: Arc<Mutex<MediaFrameRenderer>>,
@@ -692,6 +698,7 @@ impl HTMLMediaElement {
             pending_play_promises: Default::default(),
             in_flight_play_promises_queue: Default::default(),
             player: Default::default(),
+            player_slot: Default::default(),
             video_renderer: Arc::new(Mutex::new(MediaFrameRenderer::new(
                 document.webview_id(),
                 document.window().paint_api().clone(),
@@ -1828,8 +1835,54 @@ impl HTMLMediaElement {
 
     /// <https://html.spec.whatwg.org/multipage/#concept-media-load-resource>
     fn resource_fetch_algorithm(&self, cx: &JSContext, resource: Resource) {
+        // Penny: within the bound on live players (media_player_budget.rs).
+        // Without room, the download waits as one the user agent suspended,
+        // and the element tries again when a player is released.
+        if let Resource::Url(ref url) = resource &&
+            self.player_slot.borrow().is_none()
+        {
+            let this = Trusted::new(self);
+            let generation_id = self.generation_id.get();
+            let task_source = self
+                .owner_global()
+                .task_manager()
+                .media_element_task_source()
+                .to_sendable();
+            let url = url.clone();
+            let wake = move || {
+                task_source.queue(task!(media_player_room: move |cx| {
+                    let this = this.root();
+                    if generation_id != this.generation_id.get() ||
+                        this.player_slot.borrow().is_some()
+                    {
+                        return;
+                    }
+                    this.resource_fetch_algorithm(cx, Resource::Url(url));
+                }));
+            };
+            match media_player_budget::admit(wake) {
+                Some(slot) => *self.player_slot.borrow_mut() = Some(slot),
+                None => {
+                    self.network_state.set(NetworkState::Idle);
+                    self.queue_media_element_task_to_fire_event(atom!("suspend"));
+                    let this = Trusted::new(self);
+                    self.owner_global()
+                        .task_manager()
+                        .media_element_task_source()
+                        .queue(task!(media_player_wait_stops_delaying_load: move |cx| {
+                            let this = this.root();
+                            if generation_id != this.generation_id.get() {
+                                return;
+                            }
+                            this.delay_load_event(false, cx);
+                        }));
+                    return;
+                },
+            }
+        }
         if let Err(e) = self.create_media_player(&resource) {
             error!("Create media player error {:?}", e);
+            *self.player_slot.borrow_mut() = None;
             self.resource_selection_algorithm_failure_steps(cx);
             return;
         }
@@ -1972,6 +2025,10 @@ impl HTMLMediaElement {
                         && let Err(error) = player.lock().unwrap().stop() {
                             error!("Could not stop player: {error:?}");
                         }
+                    // Penny: a player whose source failed is released, not
+                    // kept stopped: its threads and its share of the bound on
+                    // live players go back (media_player_budget.rs).
+                    this.reset_media_player(cx.no_gc());
 
                     // Step 6. Reject pending play promises with promises and a "NotSupportedError"
                     // DOMException.
@@ -2586,6 +2643,7 @@ impl HTMLMediaElement {
         }
 
         *self.player.borrow_mut() = None;
+        *self.player_slot.borrow_mut() = None;
         self.video_renderer.lock().unwrap().reset();
         *self.event_handler.borrow_mut() = None;
 
