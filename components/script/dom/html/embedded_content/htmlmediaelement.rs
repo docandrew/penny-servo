@@ -746,7 +746,8 @@ impl HTMLMediaElement {
             .as_ref()
             .is_some_and(|player| !player.lock().unwrap().paused());
 
-        if self.is_potentially_playing() && !is_playing {
+        let should_play = self.is_potentially_playing();
+        if should_play && !is_playing {
             if let Some(ref player) = *self.player.borrow() {
                 let player = player.lock().unwrap();
 
@@ -760,7 +761,7 @@ impl HTMLMediaElement {
                     error!("Could not play media: {error:?}");
                 }
             }
-        } else if is_playing &&
+        } else if !should_play && is_playing &&
             let Some(ref player) = *self.player.borrow() &&
             let Err(error) = player.lock().unwrap().pause()
         {
@@ -830,9 +831,10 @@ impl HTMLMediaElement {
         // Step 2. Let other cues be a list of cues, initialized to contain
         // all the cues of hidden and showing text tracks of the media element
         // that are not present in current cues.
-        let Some((current_cues, other_cues)) = self.current_and_other_cues(cx.no_gc()) else {
-            return;
-        };
+        // No text tracks means empty cue lists, not an end to playback updates.
+        let (current_cues, other_cues) = self
+            .current_and_other_cues(cx.no_gc())
+            .unwrap_or_default();
         // Step 3. Let last time be the current playback position at the time
         // this algorithm was last run for this media element,
         // if this is not the first time it has run.
