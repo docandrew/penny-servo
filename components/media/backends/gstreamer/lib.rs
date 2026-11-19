@@ -145,7 +145,9 @@ impl GStreamerBackend {
         thread::Builder::new()
             .name("GStreamerBackend ShutdownThread".to_owned())
             .spawn(move || {
-                match recvr.recv().unwrap() {
+                while let Ok(message) = recvr.recv() {
+                    match message {
+                    BackendMsg::Retire { resources } => drop(resources),
                     BackendMsg::Shutdown {
                         context,
                         id,
@@ -161,7 +163,8 @@ impl GStreamerBackend {
                         // tell caller we are done removing this instance
                         let _ = tx_ack.send(());
                     },
-                };
+                    }
+                }
             })
             .unwrap();
 
