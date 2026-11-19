@@ -134,6 +134,7 @@ struct PlayerInner {
     can_resume: Cell<bool>,
     playback_rate: Cell<f64>,
     muted: Cell<bool>,
+    audio_track_enabled: bool,
     volume: Cell<f64>,
     stream_type: StreamType,
     last_metadata: Option<Metadata>,
@@ -170,7 +171,7 @@ impl PlayerInner {
         }
 
         self.muted.set(muted);
-        self.player.set_mute(muted);
+        self.player.set_mute(muted || !self.audio_track_enabled);
         Ok(())
     }
 
@@ -388,6 +389,10 @@ impl PlayerInner {
         self.player
             .set_audio_track(stream_index)
             .map_err(|_| PlayerError::SetTrackFailed)?;
+        // GstPlay cannot select an empty stream set for audio-only media.
+        // Preserve the requested mute state while silencing a disabled track.
+        self.audio_track_enabled = enabled;
+        self.player.set_mute(self.muted.get() || !enabled);
         self.player.set_audio_track_enabled(enabled);
         Ok(())
     }
@@ -655,6 +660,7 @@ impl GStreamerPlayer {
             can_resume: Cell::new(DEFAULT_CAN_RESUME),
             playback_rate: Cell::new(DEFAULT_PLAYBACK_RATE),
             muted: Cell::new(DEFAULT_MUTED),
+            audio_track_enabled: true,
             volume: Cell::new(DEFAULT_VOLUME),
             stream_type: self.stream_type,
             last_metadata: None,
