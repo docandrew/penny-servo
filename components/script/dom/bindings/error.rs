@@ -39,6 +39,10 @@ use crate::dom::bindings::str::USVString;
 use crate::dom::domexception::{DOMErrorName, DOMException};
 use crate::dom::globalscope::GlobalScope;
 use crate::dom::types::QuotaExceededError;
+use crate::dom::bindings::inheritance::Castable;
+use crate::dom::window::Window;
+use crate::dom::workerglobalscope::WorkerGlobalScope;
+use crate::event_loop::script_thread::ScriptThread;
 
 #[cfg(feature = "js_backtrace")]
 thread_local! {
@@ -88,6 +92,21 @@ pub(crate) fn throw_dom_exception(cx: &mut JSContext, global: &GlobalScope, resu
         },
 
         Err(JsEngineError::JSFailed) => unsafe {
+            // A shutdown interrupt stops execution without throwing a catchable
+            // JS exception. Preserve that failure for the binding's false return.
+            // Do not manufacture an exception that page code could catch to keep
+            // executing after shutdown, or relax the invariant for live globals.
+            let closing = if let Some(worker) = global.downcast::<WorkerGlobalScope>() {
+                worker.is_closing()
+            } else if global.is::<Window>() {
+                !ScriptThread::can_continue_running()
+            } else {
+                false
+            };
+            if !JS_IsExceptionPending(cx) && closing {
+                log::warn!("PENNY-SHUTDOWN: preserving uncatchable JavaScript cancellation");
+                return;
+            }
             assert!(JS_IsExceptionPending(cx));
         },
     }
