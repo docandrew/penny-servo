@@ -118,6 +118,10 @@ impl<T> From<HyperRustlsHttpsConnector<T>> for InstrumentedConnector<T> {
 pub struct InstrumentedStream<T> {
     inner: MaybeHttpsStream<T>,
     tls_info: Option<TlsHandshakeInfo>,
+    /// This connection's share of Penny's declared connections, returned
+    /// when hyper drops the connection.
+    #[cfg(target_os = "cubit")]
+    permit: Option<crate::connection_limit::Permit>,
 }
 
 impl<T: Unpin> Unpin for InstrumentedStream<T> {}
@@ -178,6 +182,8 @@ where
             MaybeHttpsStream::Http(inner) => Self {
                 inner: MaybeHttpsStream::Http(inner),
                 tls_info: None,
+                #[cfg(target_os = "cubit")]
+                permit: None,
             },
             MaybeHttpsStream::Https(tls_stream) => {
                 let (_tcp, tls) = tls_stream.inner().get_ref();
@@ -186,6 +192,8 @@ where
                 Self {
                     inner: MaybeHttpsStream::Https(tls_stream),
                     tls_info: Some(tls_info),
+                    #[cfg(target_os = "cubit")]
+                    permit: None,
                 }
             },
         }
@@ -225,6 +233,12 @@ where
         cx: &mut Context<'_>,
         buf: hyper::rt::ReadBufCursor<'_>,
     ) -> Poll<Result<(), io::Error>> {
+        // Penny on CuBit: an evicted idle connection reads end-of-file
+        // (connection_limit.rs); hyper then drops it and its permit.
+        #[cfg(target_os = "cubit")]
+        if self.permit.as_ref().is_some_and(|permit| permit.poll_evicted(cx)) {
+            return Poll::Ready(Ok(()));
+        }
         std::pin::Pin::new(&mut self.get_mut().inner).poll_read(cx, buf)
     }
 }
@@ -238,6 +252,13 @@ where
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
+        #[cfg(target_os = "cubit")]
+        if self.permit.as_ref().is_some_and(crate::connection_limit::Permit::evicted) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "Penny evicted this idle connection",
+            )));
+        }
         std::pin::Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
     }
 
@@ -264,6 +285,13 @@ where
         cx: &mut Context<'_>,
         bufs: &[io::IoSlice<'_>],
     ) -> Poll<Result<usize, io::Error>> {
+        #[cfg(target_os = "cubit")]
+        if self.permit.as_ref().is_some_and(crate::connection_limit::Permit::evicted) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "Penny evicted this idle connection",
+            )));
+        }
         std::pin::Pin::new(&mut self.get_mut().inner).poll_write_vectored(cx, bufs)
     }
 }
@@ -286,10 +314,20 @@ where
     }
 
     fn call(&mut self, dst: Destination) -> Self::Future {
+        #[cfg(target_os = "cubit")]
+        let key = crate::connection_limit::key_of(&dst);
         let future = self.inner.call(dst);
         Box::pin(async move {
+            #[cfg(target_os = "cubit")]
+            let permit = crate::connection_limit::acquire(key).await;
             let stream = future.await.map_err(|error| -> BoxError { error })?;
-            Ok(InstrumentedStream::from_maybe_https_stream(stream))
+            #[allow(unused_mut)]
+            let mut stream = InstrumentedStream::from_maybe_https_stream(stream);
+            #[cfg(target_os = "cubit")]
+            {
+                stream.permit = Some(permit);
+            }
+            Ok(stream)
         })
     }
 }

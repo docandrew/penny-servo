@@ -707,7 +707,20 @@ async fn obtain_response(
 
     #[cfg(not(feature = "tracing"))]
     {
-        client_future.await
+        // Penny on CuBit: this host has a request in flight until the
+        // response's body ends (the response carries the count).
+        #[cfg(target_os = "cubit")]
+        let in_flight = crate::connection_limit::InFlight::new(
+            url.host_str().unwrap_or_default(),
+            url.port_or_known_default().unwrap_or_default(),
+        );
+        let result = client_future.await;
+        #[cfg(target_os = "cubit")]
+        let result = result.map(|(mut response, message)| {
+            response.extensions_mut().insert(in_flight);
+            (response, message)
+        });
+        result
     }
 }
 
@@ -2355,6 +2368,13 @@ async fn http_network_fetch(
     *response_body.lock() = ResponseBody::Receiving(Vec::with_capacity(prealloc_size));
     let response_body2 = response_body.clone();
 
+    #[cfg(target_os = "cubit")]
+    let in_flight = response_stream
+        .extensions()
+        .get::<std::sync::Arc<crate::connection_limit::InFlight>>()
+        .cloned();
+    #[cfg(target_os = "cubit")]
+    let in_flight_on_error = in_flight.clone();
     spawn_task(
         response_stream
             .into_body()
@@ -2374,6 +2394,8 @@ async fn http_network_fetch(
                 future::ready(Ok(response_body_accumulator))
             })
             .and_then(move |complete_response_body| {
+                #[cfg(target_os = "cubit")]
+                let _in_flight = in_flight;
                 debug!("successfully finished response for {:?}", url1);
                 let mut body = complete_response_body.lock();
                 let mut completed_body = match *body {
@@ -2400,6 +2422,8 @@ async fn http_network_fetch(
                 future::ready(Ok(()))
             })
             .map_err(move |error| {
+                #[cfg(target_os = "cubit")]
+                let _in_flight = in_flight_on_error;
                 if let std::io::ErrorKind::InvalidData = error.kind() {
                     debug!("Content decompression error for {:?}", url2);
                     let _ = done_sender3.send(Data::Error(NetworkError::DecompressionError));
