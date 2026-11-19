@@ -222,19 +222,22 @@ impl Profiler {
     }
 
     fn print_buckets(&mut self) {
+        if let Err(error) = self.try_print_buckets() {
+            // Diagnostics must never abort the browser, including during shutdown.
+            log::warn!("Could not write timing profile: {error}");
+        }
+    }
+
+    fn try_print_buckets(&mut self) -> io::Result<()> {
         match self.output {
             Some(OutputOptions::FileName(ref filename)) => {
                 let path = Path::new(&filename);
-                let mut file = match File::create(path) {
-                    Err(e) => panic!("Couldn't create {}: {}", path.display(), e),
-                    Ok(file) => file,
-                };
+                let mut file = File::create(path)?;
                 writeln!(
                     file,
                     "_category_\t_incremental?_\t_iframe?_\t_url_\t_mean (ms)_\t\
                      _median (ms)_\t_min (ms)_\t_max (ms)_\t_events_"
-                )
-                .unwrap();
+                )?;
                 for ((category, meta), ref mut data) in &mut self.buckets {
                     data.sort_by(|a, b| a.partial_cmp(b).expect("No NaN values in profiles"));
                     let data_len = data.len();
@@ -250,14 +253,13 @@ impl Profiler {
                             min.as_seconds_f64() * 1000.,
                             max.as_seconds_f64() * 1000.,
                             data_len
-                        )
-                        .unwrap();
+                        )?;
                     }
                 }
 
-                writeln!(file, "_url\t_blocked layout queries_").unwrap();
+                writeln!(file, "_url\t_blocked layout queries_")?;
                 for (url, count) in &self.blocked_layout_queries {
-                    writeln!(file, "{}\t{}", url, count).unwrap();
+                    writeln!(file, "{}\t{}", url, count)?;
                 }
             },
             Some(OutputOptions::Stdout(_)) => {
@@ -276,8 +278,7 @@ impl Profiler {
                     "     _min (ms)_",
                     "     _max (ms)_",
                     "      _events_"
-                )
-                .unwrap();
+                )?;
                 for ((category, meta), ref mut data) in &mut self.buckets {
                     data.sort_by(|a, b| a.partial_cmp(b).expect("No NaN values in profiles"));
                     let data_len = data.len();
@@ -293,19 +294,19 @@ impl Profiler {
                             min.as_seconds_f64() * 1000.,
                             max.as_seconds_f64() * 1000.,
                             data_len
-                        )
-                        .unwrap();
+                        )?;
                     }
                 }
-                writeln!(&mut lock).unwrap();
+                writeln!(&mut lock)?;
 
-                writeln!(&mut lock, "_url_\t_blocked layout queries_").unwrap();
+                writeln!(&mut lock, "_url_\t_blocked layout queries_")?;
                 for (url, count) in &self.blocked_layout_queries {
-                    writeln!(&mut lock, "{}\t{}", url, count).unwrap();
+                    writeln!(&mut lock, "{}\t{}", url, count)?;
                 }
-                writeln!(&mut lock).unwrap();
+                writeln!(&mut lock)?;
             },
             None => { /* Do nothing if no output option has been set */ },
         };
+        Ok(())
     }
 }
