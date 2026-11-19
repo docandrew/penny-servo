@@ -45,6 +45,8 @@ webcrypto = [
     "dep:ed448-goldilocks",
     "dep:elliptic-curve",
     "dep:hkdf",
+    "dep:hmac",
+    "dep:pbkdf2",
     "dep:k12",
     "dep:keccak",
     "dep:ml-dsa",
@@ -90,7 +92,7 @@ app_units = { workspace = true }
 argon2 = { workspace = true, optional = true }
 arrayvec = { workspace = true }
 atomic_refcell = { workspace = true }
-aws-lc-rs = { workspace = true }
+penny-crypto = { workspace = true }
 backtrace = { workspace = true }
 base64 = { workspace = true }
 base64ct = { workspace = true }
@@ -127,6 +129,8 @@ fonts_traits = { workspace = true }
 glow = { workspace = true }
 headers = { workspace = true }
 hkdf = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+pbkdf2 = { workspace = true, optional = true }
 html5ever = { workspace = true }
 http = { workspace = true }
 httparse = { workspace = true }

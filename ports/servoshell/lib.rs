@@ -42,7 +42,8 @@ pub fn main() {
 }
 
 pub fn init_crypto() {
-    rustls::crypto::aws_lc_rs::default_provider()
+    // Penny's fork: its SPARK provider, the workspace's only one (WEB-004).
+    penny_crypto::provider()
         .install_default()
         .expect("Error initializing crypto provider");
 }

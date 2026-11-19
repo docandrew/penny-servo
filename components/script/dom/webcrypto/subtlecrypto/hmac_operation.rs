@@ -2,8 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use aws_lc_rs::constant_time::verify_slices_are_equal;
-use aws_lc_rs::hmac;
+use hmac::{KeyInit, Mac};
 use js::context::JSContext;
 use rand::TryRng;
 use rand::rngs::SysRng;
@@ -22,35 +21,48 @@ use crate::dom::subtlecrypto::{
     JsonWebKeyExt, JwkStringField, KeyAlgorithmAndDerivatives, NormalizedAlgorithm,
 };
 
+/// The MAC of `message` under `key` (FIPS 198-1) with the key's hash:
+/// SHA-256 and SHA-384 by Penny's SPARK HMAC (penny-crypto); SHA-1 and
+/// SHA-512 by RustCrypto's hmac for now (WEB-004 interim, until
+/// SPARKTLSCrypto has them).
+fn hmac_of(key: &CryptoKey, message: &[u8]) -> Result<Vec<u8>, Error> {
+    let KeyAlgorithmAndDerivatives::HmacKeyAlgorithm(algo) = key.algorithm() else {
+        return Err(Error::NotSupported(Some("The key algorithm is not HMAC".into())));
+    };
+    let secret = key.handle().as_bytes();
+    let too_long = || Error::Operation(Some("The message is too long".into()));
+    Ok(match algo.hash.name() {
+        CryptoAlgorithm::Sha256 => penny_crypto::hmac_sha256(secret, message).ok_or_else(too_long)?.to_vec(),
+        CryptoAlgorithm::Sha384 => penny_crypto::hmac_sha384(secret, message).ok_or_else(too_long)?.to_vec(),
+        CryptoAlgorithm::Sha1 => {
+            let mut mac = hmac::Hmac::<sha1::Sha1>::new_from_slice(secret).map_err(|_| too_long())?;
+            mac.update(message);
+            mac.finalize().into_bytes().to_vec()
+        },
+        CryptoAlgorithm::Sha512 => {
+            let mut mac = hmac::Hmac::<sha2::Sha512>::new_from_slice(secret).map_err(|_| too_long())?;
+            mac.update(message);
+            mac.finalize().into_bytes().to_vec()
+        },
+        _ => return Err(Error::NotSupported(Some("Unsupported hash algorithm for HMAC".into()))),
+    })
+}
+
+/// Equal contents, in time that depends only on the lengths.
+fn constant_time_equal(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && std::hint::black_box(a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y))) == 0
+}
+
 /// <https://w3c.github.io/webcrypto/#hmac-operations-sign>
 pub(crate) fn sign(key: &CryptoKey, message: &[u8]) -> Result<Vec<u8>, Error> {
     // Step 1. Let mac be the result of performing the MAC Generation operation described in
     // Section 4 of [FIPS-198-1] using the key represented by the [[handle]] internal slot of key,
     // the hash function identified by the hash attribute of the [[algorithm]] internal slot of key
     // and message as the input data text.
-    let hash_function = match key.algorithm() {
-        KeyAlgorithmAndDerivatives::HmacKeyAlgorithm(algo) => match algo.hash.name() {
-            CryptoAlgorithm::Sha1 => hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-            CryptoAlgorithm::Sha256 => hmac::HMAC_SHA256,
-            CryptoAlgorithm::Sha384 => hmac::HMAC_SHA384,
-            CryptoAlgorithm::Sha512 => hmac::HMAC_SHA512,
-            _ => {
-                return Err(Error::NotSupported(Some(
-                    "Unsupported hash algorithm for HMAC".into(),
-                )));
-            },
-        },
-        _ => {
-            return Err(Error::NotSupported(Some(
-                "The key algorithm is not HMAC".into(),
-            )));
-        },
-    };
-    let sign_key = hmac::Key::new(hash_function, key.handle().as_bytes());
-    let mac = hmac::sign(&sign_key, message);
+    let mac = hmac_of(key, message)?;
 
     // Step 2. Return mac.
-    Ok(mac.as_ref().to_vec())
+    Ok(mac)
 }
 
 /// <https://w3c.github.io/webcrypto/#hmac-operations-verify>
@@ -59,30 +71,11 @@ pub(crate) fn verify(key: &CryptoKey, message: &[u8], signature: &[u8]) -> Resul
     // Section 4 of [FIPS-198-1] using the key represented by the [[handle]] internal slot of key,
     // the hash function identified by the hash attribute of the [[algorithm]] internal slot of key
     // and message as the input data text.
-    let hash_function = match key.algorithm() {
-        KeyAlgorithmAndDerivatives::HmacKeyAlgorithm(algo) => match algo.hash.name() {
-            CryptoAlgorithm::Sha1 => hmac::HMAC_SHA1_FOR_LEGACY_USE_ONLY,
-            CryptoAlgorithm::Sha256 => hmac::HMAC_SHA256,
-            CryptoAlgorithm::Sha384 => hmac::HMAC_SHA384,
-            CryptoAlgorithm::Sha512 => hmac::HMAC_SHA512,
-            _ => {
-                return Err(Error::NotSupported(Some(
-                    "Unsupported hash algorithm for HMAC".into(),
-                )));
-            },
-        },
-        _ => {
-            return Err(Error::NotSupported(Some(
-                "The key algorithm is not HMAC".into(),
-            )));
-        },
-    };
-    let sign_key = hmac::Key::new(hash_function, key.handle().as_bytes());
-    let mac = hmac::sign(&sign_key, message);
+    let mac = hmac_of(key, message)?;
 
     // Step 2. Return true if mac is equal to signature and false otherwise. This comparison must
     // be performed in constant-time.
-    Ok(verify_slices_are_equal(mac.as_ref(), signature).is_ok())
+    Ok(constant_time_equal(&mac, signature))
 }
 
 /// <https://w3c.github.io/webcrypto/#hmac-operations-generate-key>

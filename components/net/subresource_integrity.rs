@@ -6,7 +6,6 @@ use std::iter::Filter;
 use std::str::Split;
 use std::sync::LazyLock;
 
-use aws_lc_rs::digest::{self};
 use base64::Engine;
 use net_traits::response::{Response, ResponseBody, ResponseType};
 use parking_lot::MutexGuard;
@@ -142,10 +141,11 @@ pub fn get_strongest_metadata<'a>(integrity_metadata_list: Vec<SriEntry<'a>>) ->
 /// <https://w3c.github.io/webappsec-subresource-integrity/#apply-algorithm-to-response>
 fn apply_algorithm_to_response(
     body: MutexGuard<ResponseBody>,
-    algorithm: &'static digest::Algorithm,
+    algorithm: fn(&[u8]) -> Option<Vec<u8>>,
 ) -> String {
     if let ResponseBody::Done(ref vec) = *body {
-        let response_digest = digest::digest(algorithm, vec);
+        // Penny's SPARK digests; a body beyond their length limit matches nothing.
+        let response_digest = algorithm(vec).unwrap_or_default();
         base64::engine::general_purpose::STANDARD.encode(response_digest)
     } else {
         unreachable!("Tried to calculate digest of incomplete response body")
@@ -181,9 +181,9 @@ pub fn is_response_integrity_valid(integrity_metadata: &str, response: &Response
         let digest = item.val;
 
         let hashed = match item.algorithm {
-            Algorithm::Sha256 => apply_algorithm_to_response(body, &digest::SHA256),
-            Algorithm::Sha384 => apply_algorithm_to_response(body, &digest::SHA384),
-            Algorithm::Sha512 => apply_algorithm_to_response(body, &digest::SHA512),
+            Algorithm::Sha256 => apply_algorithm_to_response(body, |m| penny_crypto::sha256(m).map(|d| d.to_vec())),
+            Algorithm::Sha384 => apply_algorithm_to_response(body, |m| penny_crypto::sha384(m).map(|d| d.to_vec())),
+            Algorithm::Sha512 => apply_algorithm_to_response(body, |m| penny_crypto::sha512(m).map(|d| d.to_vec())),
         };
 
         if hashed == digest {

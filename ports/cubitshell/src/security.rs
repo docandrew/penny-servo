@@ -1,66 +1,89 @@
 //! Read-only inspector of the active document's actual rustls handshake.
-//! AWS-LC is already Servo's crypto provider; parsing here does not establish
-//! trust or make a second connection. rustls remains the sole verifier.
-// Narrow declarations matching aws-lc-sys 0.45.0's generated x86-64 ABI.
-// Keep the exact Cargo version pin: these names intentionally fail to link
-// on an unchecked provider upgrade. No all-bindings or second crypto library.
-#[allow(non_snake_case)]
-mod lc {
-    pub use aws_lc_sys::{X509, X509_NAME, ASN1_TIME, NID_commonName};
-    unsafe extern "C" {
-        #[link_name = "aws_lc_0_45_0_X509_free"]
-        pub fn X509_free(cert: *mut X509);
-        #[link_name = "aws_lc_0_45_0_d2i_X509"]
-        pub fn d2i_X509(out: *mut *mut X509, input: *mut *const u8, len: std::os::raw::c_long) -> *mut X509;
-        #[link_name = "aws_lc_0_45_0_X509_get_subject_name"]
-        pub fn X509_get_subject_name(cert: *const X509) -> *mut X509_NAME;
-        #[link_name = "aws_lc_0_45_0_X509_get_issuer_name"]
-        pub fn X509_get_issuer_name(cert: *const X509) -> *mut X509_NAME;
-        #[link_name = "aws_lc_0_45_0_X509_NAME_get_text_by_NID"]
-        pub fn X509_NAME_get_text_by_NID(name: *const X509_NAME, nid: i32, buffer: *mut i8, length: i32) -> i32;
-        #[link_name = "aws_lc_0_45_0_X509_get0_notBefore"]
-        pub fn X509_get0_notBefore(cert: *const X509) -> *const ASN1_TIME;
-        #[link_name = "aws_lc_0_45_0_X509_get0_notAfter"]
-        pub fn X509_get0_notAfter(cert: *const X509) -> *const ASN1_TIME;
-        #[link_name = "aws_lc_0_45_0_ASN1_TIME_to_posix"]
-        pub fn ASN1_TIME_to_posix(value: *const ASN1_TIME, seconds: *mut i64) -> i32;
-    }
-}
+//! Penny's SPARK provider (penny-crypto) did the cryptography; parsing here does
+//! not establish trust or make a second connection. rustls remains the sole verifier.
+// The certificate summary (subject and issuer common names, validity),
+// read from the DER by this small strict walker: no C X.509 parser
+// (WEB-004; aws-lc left Penny). Anything unexpected is "Unavailable".
 use servo::WebView;
 
-struct Certificate(*mut lc::X509);
-impl Drop for Certificate {
-    fn drop(&mut self) { unsafe { lc::X509_free(self.0) }; }
+/// One DER element at the start of `input`: (tag, contents, rest).
+fn element(input: &[u8]) -> Option<(u8, &[u8], &[u8])> {
+    let (&tag, rest) = input.split_first()?;
+    let (&first, rest) = rest.split_first()?;
+    let (len, rest) = match first {
+        0..=0x7f => (first as usize, rest),
+        0x81..=0x83 => {
+            let count = (first & 0x7f) as usize;
+            if rest.len() < count { return None; }
+            (rest[..count].iter().fold(0usize, |a, &b| (a << 8) | b as usize), &rest[count..])
+        },
+        _ => return None,
+    };
+    (rest.len() >= len).then(|| (tag, &rest[..len], &rest[len..]))
 }
-fn name(cert: &Certificate, issuer: bool) -> String {
-    let mut buffer = [0i8; 512];
-    // X509 owns the borrowed name; the supplied output buffer is bounded.
-    unsafe {
-        let dn = if issuer { lc::X509_get_issuer_name(cert.0) }
-                 else { lc::X509_get_subject_name(cert.0) };
-        if dn.is_null() { return "Unavailable".into(); }
-        let length = lc::X509_NAME_get_text_by_NID(dn, lc::NID_commonName,
-            buffer.as_mut_ptr(), buffer.len() as i32);
-        if length < 0 { return "No common name (identity may use subjectAltName)".into(); }
-        let bytes: Vec<u8> = buffer[..(length as usize).min(buffer.len()-1)]
-            .iter().map(|c| *c as u8).collect();
-        String::from_utf8_lossy(&bytes).into_owned()
-    }
+
+const SEQUENCE: u8 = 0x30;
+const SET: u8 = 0x31;
+const OID: u8 = 0x06;
+const UTC_TIME: u8 = 0x17;
+const GENERALIZED_TIME: u8 = 0x18;
+const VERSION: u8 = 0xa0;
+const COMMON_NAME: &[u8] = &[0x55, 0x04, 0x03];
+
+struct Summary<'a> {
+    issuer: &'a [u8],
+    not_before: (u8, &'a [u8]),
+    not_after: (u8, &'a [u8]),
+    subject: &'a [u8],
 }
-fn date(cert: &Certificate, end: bool) -> String {
-    let mut seconds = 0;
-    unsafe {
-        let value = if end { lc::X509_get0_notAfter(cert.0) } else { lc::X509_get0_notBefore(cert.0) };
-        if value.is_null() || lc::ASN1_TIME_to_posix(value, &mut seconds) != 1 {
-            return "Unavailable".into();
+
+fn summary(der: &[u8]) -> Option<Summary<'_>> {
+    let (SEQUENCE, certificate, _) = element(der)? else { return None };
+    let (SEQUENCE, tbs, _) = element(certificate)? else { return None };
+    let mut rest = tbs;
+    let (tag, _, after) = element(rest)?;
+    if tag == VERSION { rest = after; }
+    let (_serial, _, rest) = element(rest)?;
+    let (_algorithm, _, rest) = element(rest)?;
+    let (SEQUENCE, issuer, rest) = element(rest)? else { return None };
+    let (SEQUENCE, validity, rest) = element(rest)? else { return None };
+    let (SEQUENCE, subject, _) = element(rest)? else { return None };
+    let (before_tag, before, after) = element(validity)?;
+    let (after_tag, not_after, _) = element(after)?;
+    Some(Summary { issuer, not_before: (before_tag, before), not_after: (after_tag, not_after), subject })
+}
+
+fn common_name(name: &[u8]) -> String {
+    let mut sets = name;
+    while let Some((SET, set, rest)) = element(sets) {
+        sets = rest;
+        let Some((SEQUENCE, pair, _)) = element(set) else { continue };
+        let Some((OID, oid, value)) = element(pair) else { continue };
+        if oid == COMMON_NAME {
+            if let Some((_, text, _)) = element(value) {
+                return String::from_utf8_lossy(text).into_owned();
+            }
         }
     }
-    match time::OffsetDateTime::from_unix_timestamp(seconds) {
-        Ok(t) => format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
-            t.year(), t.month() as u8, t.day(), t.hour(), t.minute(), t.second()),
-        Err(_) => "Unavailable".into(),
-    }
+    "No common name (identity may use subjectAltName)".into()
 }
+
+/// UTCTime (YYMMDDHHMMSSZ, RFC 5280: 50..99 is 19xx) or GeneralizedTime.
+fn date((tag, text): (u8, &[u8])) -> String {
+    let text = std::str::from_utf8(text).unwrap_or("");
+    let digits = text.strip_suffix('Z').unwrap_or("");
+    let full = match (tag, digits.len()) {
+        (UTC_TIME, 12) => {
+            let year: u32 = digits[..2].parse().unwrap_or(0);
+            format!("{}{digits}", if year >= 50 { "19" } else { "20" })
+        },
+        (GENERALIZED_TIME, 14) => digits.to_string(),
+        _ => return "Unavailable".into(),
+    };
+    if !full.bytes().all(|b| b.is_ascii_digit()) { return "Unavailable".into(); }
+    format!("{}-{}-{} {}:{}:{} UTC", &full[..4], &full[4..6], &full[6..8], &full[8..10], &full[10..12], &full[12..14])
+}
+
 fn line(out: &mut String, text: &str) {
     // Plain ASCII, no control characters from remote certificate names.
     let safe: String = text.chars().map(|c| if c.is_ascii() && !c.is_ascii_control() {c} else {'?'}).collect();
@@ -72,15 +95,13 @@ fn line(out: &mut String, text: &str) {
 fn certificate(out: &mut String, der: &[u8], index: usize) {
     line(out, &format!("Certificate {}{}", index+1, if index==0 {" (site)"} else {" (issuer)"}));
     if der.is_empty() || der.len() > 65536 { line(out, "Certificate exceeds inspector limit."); return; }
-    let mut cursor = der.as_ptr();
-    let cert = Certificate(unsafe { lc::d2i_X509(std::ptr::null_mut(), &mut cursor, der.len() as _) });
-    if cert.0.is_null() { line(out, "Certificate details could not be decoded."); return; }
-    line(out, &format!("Subject: {}", name(&cert, false)));
-    line(out, &format!("Issuer:  {}", name(&cert, true)));
-    line(out, &format!("Valid from: {}", date(&cert, false)));
-    line(out, &format!("Valid until: {}", date(&cert, true)));
-    let hash = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, der);
-    let hex: String = hash.as_ref().iter().map(|b| format!("{b:02X}")).collect();
+    let Some(cert) = summary(der) else { line(out, "Certificate details could not be decoded."); return; };
+    line(out, &format!("Subject: {}", common_name(cert.subject)));
+    line(out, &format!("Issuer:  {}", common_name(cert.issuer)));
+    line(out, &format!("Valid from: {}", date(cert.not_before)));
+    line(out, &format!("Valid until: {}", date(cert.not_after)));
+    let hash = penny_crypto::sha256(der).unwrap_or_default();
+    let hex: String = hash.iter().map(|b| format!("{b:02X}")).collect();
     line(out, "SHA-256 fingerprint:"); line(out, &hex); line(out, "");
 }
 pub fn report(view: &WebView, loading: bool) -> String {

@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-use aws_lc_rs::digest;
 
 use crate::dom::bindings::error::Error;
 use crate::dom::subtlecrypto::{Algorithm, CryptoAlgorithm};
@@ -24,16 +23,16 @@ pub(crate) fn digest(nomrmalized_algorithm: &Algorithm, message: &[u8]) -> Resul
     //     of [FIPS-180-4] using message as the input message, M.
     // Step 2. If performing the operation results in an error, then throw an OperationError.
     let result = match nomrmalized_algorithm.name {
-        CryptoAlgorithm::Sha1 => digest::digest(&digest::SHA1_FOR_LEGACY_USE_ONLY, message)
-            .as_ref()
-            .to_vec(),
-        CryptoAlgorithm::Sha256 => digest::digest(&digest::SHA256, message).as_ref().to_vec(),
-        CryptoAlgorithm::Sha384 => digest::digest(&digest::SHA384, message).as_ref().to_vec(),
-        CryptoAlgorithm::Sha512 => digest::digest(&digest::SHA512, message).as_ref().to_vec(),
+        // Penny's SPARK digests (penny-crypto); None only beyond their length limit.
+        CryptoAlgorithm::Sha1 => penny_crypto::sha1(message).map(|d| d.to_vec()),
+        CryptoAlgorithm::Sha256 => penny_crypto::sha256(message).map(|d| d.to_vec()),
+        CryptoAlgorithm::Sha384 => penny_crypto::sha384(message).map(|d| d.to_vec()),
+        CryptoAlgorithm::Sha512 => penny_crypto::sha512(message).map(|d| d.to_vec()),
         _ => {
             return Err(Error::NotSupported(Some("Algorithm not supported".into())));
         },
-    };
+    }
+    .ok_or(Error::Operation(Some("The message is too long to digest".into())))?;
 
     // Step 3. Return result.
     Ok(result)

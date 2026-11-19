@@ -41,8 +41,7 @@ url = { workspace = true }
 servo-base = { workspace = true }
 profile_traits = { workspace = true }
 gstreamer = { workspace = true, optional = true }
-aws-lc-rs = { workspace = true }
-aws-lc-sys = { version = "=0.45.0", default-features = false }
+penny-crypto = { workspace = true }
 time = { workspace = true }
 cubit-fonts = { path = "../../cubit-build/fonts" }
 # The font list's status (no usable face is a visible error, never blank text).

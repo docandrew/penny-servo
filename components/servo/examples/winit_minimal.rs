@@ -22,7 +22,7 @@ use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::Window;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    rustls::crypto::aws_lc_rs::default_provider()
+    penny_crypto::provider()
         .install_default()
         .expect("Failed to install crypto provider");
 

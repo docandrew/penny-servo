@@ -107,7 +107,7 @@ fn receive_credential_prompt_msgs(
 }
 
 fn create_http_state(fc: Option<GenericEmbedderProxy<NetToEmbedderMsg>>) -> HttpState {
-    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    let _ = penny_crypto::provider().install_default();
 
     let override_manager = net::connector::CertificateErrorOverrideManager::new();
     HttpState {

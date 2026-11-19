@@ -4,7 +4,6 @@
 
 use std::num::NonZero;
 
-use aws_lc_rs::pbkdf2;
 use js::context::JSContext;
 
 use crate::dom::bindings::codegen::Bindings::CryptoKeyBinding::{KeyType, KeyUsage};
@@ -47,38 +46,24 @@ pub(crate) fn derive_bits(
 
     // Step 4. Let prf be the MAC Generation function described in Section 4 of [FIPS-198-1] using
     // the hash function described by the hash member of normalizedAlgorithm.
-    let prf = match normalized_algorithm.hash.name() {
-        CryptoAlgorithm::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
-        CryptoAlgorithm::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
-        CryptoAlgorithm::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
-        CryptoAlgorithm::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+    // RustCrypto's PBKDF2 for now (WEB-004 interim, until SPARKTLSCrypto has
+    // PBKDF2).
+    let mut result = vec![0; length as usize / 8];
+    let password = key.handle().as_bytes();
+    let salt = &normalized_algorithm.salt;
+    let derived = match normalized_algorithm.hash.name() {
+        CryptoAlgorithm::Sha1 => pbkdf2::pbkdf2::<hmac::Hmac<sha1::Sha1>>(password, salt, iterations.get(), &mut result),
+        CryptoAlgorithm::Sha256 => pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha256>>(password, salt, iterations.get(), &mut result),
+        CryptoAlgorithm::Sha384 => pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha384>>(password, salt, iterations.get(), &mut result),
+        CryptoAlgorithm::Sha512 => pbkdf2::pbkdf2::<hmac::Hmac<sha2::Sha512>>(password, salt, iterations.get(), &mut result),
         _ => {
             return Err(Error::NotSupported(Some(
                 "Normalized algorithm's hash name is not supported".into(),
             )));
         },
     };
+    derived.map_err(|_| Error::Operation(Some("PBKDF2 refused its parameters".into())))?;
 
-    // Step 5. Let result be the result of performing the PBKDF2 operation defined in Section 5.2
-    // of [RFC8018] using prf as the pseudo-random function, PRF, the password represented by the
-    // [[handle]] internal slot of key as the password, P, the salt attribute of
-    // normalizedAlgorithm as the salt, S, the value of the iterations attribute of
-    // normalizedAlgorithm as the iteration count, c, and length divided by 8 as the intended key
-    // length, dkLen.
-    let mut result = vec![0; length as usize / 8];
-    pbkdf2::derive(
-        prf,
-        iterations,
-        &normalized_algorithm.salt,
-        key.handle().as_bytes(),
-        &mut result,
-    );
-
-    // Step 5. If the key derivation operation fails, then throw an OperationError.
-    // TODO: Investigate when key derivation can fail and how ring handles that case
-    // (pbkdf2::derive does not return a Result type)
-
-    // Step 6. Return result
     Ok(result)
 }
 

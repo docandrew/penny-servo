@@ -21,7 +21,7 @@ test-util = ["hyper-util/server-graceful", "dep:servo-default-resources", "net_t
 tracing = ["dep:tracing"]
 
 [dependencies]
-aws-lc-rs = { workspace = true }
+penny-crypto = { workspace = true }
 async-compression = { workspace = true, features = ["brotli", "gzip", "tokio", "zlib", "zstd"] }
 async-recursion = { workspace = true }
 async-tungstenite = { workspace = true }
@@ -66,7 +66,7 @@ rand = { workspace = true }
 regex = { workspace = true }
 resvg = { workspace = true }
 rustc-hash = { workspace = true }
-rustls = { workspace = true, features = ["aws-lc-rs"] }
+rustls = { workspace = true }
 rustls-pki-types = { workspace = true }
 rustls-platform-verifier = { workspace = true }
 rusqlite = { workspace = true }
@@ -102,7 +102,7 @@ hyper-util = { workspace = true, features = ["server-graceful"] }
 # This must always be a path dependency, we don't want to add a dependency on a
 # crates.io version of ourselves - we want to enable a feature of ourselves.
 net = { package = "servo-net", path = ".", features = ["test-util"] }
-rustls = { workspace = true, features = ["aws-lc-rs"] }
+rustls = { workspace = true }
 servo-default-resources = { workspace = true }
 
 [lints]

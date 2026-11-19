@@ -652,6 +652,8 @@ fn main() {
     // falls back to its built-in Mozilla list. A hosts file in the page
     // directory can redirect names for tests (the certificate is still
     // checked against the name in the URL).
+    // Penny's SPARK cryptography for every TLS connection (WEB-004).
+    let _ = penny_crypto::provider().install_default();
     let mut preferences = servo::Preferences::default();
     preferences.network_use_webpki_roots = true;
     preferences.dom_intersection_observer_enabled = true;
