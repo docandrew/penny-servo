@@ -75,6 +75,13 @@ use crate::websocket_loader::create_handshake_request;
 
 /// Load a file with CA certificate and produce a RootCertStore with the results.
 fn load_root_cert_store_from_file(file_path: String) -> io::Result<Vec<CertificateDer<'static>>> {
+    #[cfg(target_os = "cubit")]
+    {
+        let bytes = std::fs::read(&file_path)?;
+        if !bytes.starts_with(b"-----") {
+            return Ok(der_bundle(&bytes));
+        }
+    }
     let mut pem = BufReader::new(File::open(file_path)?);
 
     let certs = CertificateDer::pem_reader_iter(&mut pem)
@@ -84,6 +91,30 @@ fn load_root_cert_store_from_file(file_path: String) -> io::Result<Vec<Certifica
         })
         .collect();
     Ok(certs)
+}
+
+/// Certificates concatenated as DER (each a SEQUENCE with a definite length).
+#[cfg(target_os = "cubit")]
+fn der_bundle(mut bytes: &[u8]) -> Vec<CertificateDer<'static>> {
+    let mut certs = Vec::new();
+    while bytes.len() >= 2 && bytes[0] == 0x30 {
+        let (header, length) = match bytes[1] {
+            n if n < 0x80 => (2, n as usize),
+            0x81 if bytes.len() >= 3 => (3, bytes[2] as usize),
+            0x82 if bytes.len() >= 4 => (4, (bytes[2] as usize) << 8 | bytes[3] as usize),
+            0x83 if bytes.len() >= 5 => (
+                5,
+                (bytes[2] as usize) << 16 | (bytes[3] as usize) << 8 | bytes[4] as usize,
+            ),
+            _ => break,
+        };
+        let Some(cert) = bytes.get(..header + length) else {
+            break;
+        };
+        certs.push(CertificateDer::from(cert.to_vec()));
+        bytes = &bytes[header + length..];
+    }
+    certs
 }
 
 /// Returns a tuple of (public, private) senders to the new threads.

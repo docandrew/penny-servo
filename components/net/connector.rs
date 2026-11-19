@@ -481,8 +481,14 @@ impl CertificateVerificationOverrideVerifier {
             };
             verifier as Arc<dyn ServerCertVerifier>
         } else {
-            let mut root_store =
-                rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+            // On CuBit the given roots (the system trust store) are the only ones.
+            let mut root_store = if cfg!(target_os = "cubit") &&
+                matches!(ca_certficates, CACertificates::Override(_))
+            {
+                rustls::RootCertStore::empty()
+            } else {
+                rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned())
+            };
             match ca_certficates {
                 CACertificates::Default => {},
                 CACertificates::Override(certificates) => {
