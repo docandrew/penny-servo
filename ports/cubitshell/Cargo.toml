@@ -14,7 +14,12 @@ path = "src/main.rs"
 bench = false
 
 [features]
-default = []
+default = ["harfrust"]
+# Shaping (WEB-004): HarfRust (Rust) is Penny's shaper. `harfbuzz` alone
+# builds the previous, C++ shaper for A/B comparisons; both together let the
+# shaping-backend flag pick one or compare them (hosted diagnostics).
+harfrust = ["servo/harfrust"]
+harfbuzz = ["servo/harfbuzz"]
 bundled = ["servo/bundled"]
 media = ["servo/media-gstreamer", "dep:gstreamer"]
 

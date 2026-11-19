@@ -661,6 +661,19 @@ fn main() {
     let agents = user_agent::load(say);
     preferences.user_agent = agents.global.user_agent().to_string();
     agents.install();
+    // Diagnostics (WEB-004 font swap): a build with both shapers picks one,
+    // or runs both and reports their differences, by the shaping-backend
+    // flag; a single-shaper build ignores it.
+    if let Ok(backend) = std::fs::read_to_string(flag_path("shaping-backend")) {
+        match backend.trim() {
+            choice @ ("harfrust" | "harfbuzz" | "compare") => {
+                preferences.fonts_shaping_backend = choice.to_string()
+            },
+            other => say(&format!(
+                "CUBITSHELL: shaping-backend flag: no backend {other:?} (harfrust, harfbuzz, compare)"
+            )),
+        }
+    }
     let mut opts = servo::Opts::default();
     if flag("profile-check") {
         // Explicit diagnostic fixture only; retain the existing writable scope.
