@@ -510,7 +510,7 @@ impl GStreamerPlayer {
         let pipeline = player.pipeline();
 
         // FIXME(#282): The progressive downloading breaks playback on Windows and Android.
-        if !cfg!(any(target_os = "windows", target_os = "android")) &&
+        if !cfg!(any(target_os = "windows", target_os = "android", target_os = "cubit")) &&
             self.download_buffering_enabled.load(Ordering::Relaxed)
         {
             // Set player to perform progressive downloading. This will make the
