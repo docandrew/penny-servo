@@ -4,6 +4,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
+use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, Once};
@@ -123,8 +124,9 @@ enum PlayerSource {
 }
 
 struct PlayerInner {
-    player: gstreamer_play::Play,
-    signal_adapter: gstreamer_play::PlaySignalAdapter,
+    player: ManuallyDrop<gstreamer_play::Play>,
+    signal_adapter: ManuallyDrop<gstreamer_play::PlaySignalAdapter>,
+    retirement: Sender<BackendMsg>,
     source: Option<PlayerSource>,
     video_sink: gstreamer_app::AppSink,
     input_size: u64,
@@ -140,6 +142,45 @@ struct PlayerInner {
     last_metadata: Option<Metadata>,
     cat: gstreamer::DebugCategory,
     enough_data: Arc<AtomicBool>,
+}
+
+struct RetiredPlayer {
+    player: gstreamer_play::Play,
+    _signal_adapter: gstreamer_play::PlaySignalAdapter,
+}
+
+impl Drop for RetiredPlayer {
+    fn drop(&mut self) {
+        // Native GstMessages can still reference the player after Rust's last
+        // callback reference is gone. Quiesce it while retaining our strong
+        // reference, so such a message cannot trigger disposal on its thread.
+        // SAFETY: PlayerInner has been exclusively destroyed, so application
+        // code cannot call player methods again. This runs on the backend's
+        // shutdown worker. GstPlay::dispose quits and joins its native thread;
+        // no inner mutex is held while it waits for in-flight callbacks.
+        unsafe { self.player.run_dispose(); }
+    }
+}
+
+impl Drop for PlayerInner {
+    fn drop(&mut self) {
+        // A weak callback can temporarily hold the final Arc<PlayerInner>.
+        // GstPlay must not finalize on its own thread: dispose would skip join
+        // while the native main loop still uses self during shutdown.
+        // SAFETY: Drop runs once with exclusive access. These two fields are
+        // taken once, and ManuallyDrop prevents a second field destruction.
+        let resources: Box<dyn Send> = unsafe {
+            Box::new(RetiredPlayer {
+                player: ManuallyDrop::take(&mut self.player),
+                _signal_adapter: ManuallyDrop::take(&mut self.signal_adapter),
+            })
+        };
+        if let Err(_retirement) = self.retirement.send(BackendMsg::Retire { resources }) {
+            // Losing the lifetime owner is fatal. Do not release the returned
+            // resources here on a possible native callback thread.
+            std::process::abort();
+        }
+    }
 }
 
 impl PlayerInner {
@@ -267,7 +308,7 @@ impl PlayerInner {
             let Some(ref duration) = metadata.duration &&
             duration < &time::Duration::new(time as u64, 0)
         {
-            gstreamer::warning!(self.cat, obj = &self.player, "Trying to seek out of range");
+            gstreamer::warning!(self.cat, obj = &*self.player, "Trying to seek out of range");
             return Err(PlayerError::SeekOutOfRange);
         }
 
@@ -649,8 +690,9 @@ impl GStreamerPlayer {
         }
 
         *self.inner.borrow_mut() = Some(Arc::new(Mutex::new(PlayerInner {
-            player,
-            signal_adapter: signal_adapter.clone(),
+            player: ManuallyDrop::new(player),
+            signal_adapter: ManuallyDrop::new(signal_adapter.clone()),
+            retirement: self.backend_chan.lock().unwrap().clone(),
             source: None,
             video_sink,
             input_size: 0,
@@ -749,7 +791,7 @@ impl GStreamerPlayer {
             inner.last_metadata = Some(metadata.clone());
             gstreamer::info!(
                 inner.cat,
-                obj = &inner.player,
+                obj = &*inner.player,
                 "Metadata updated: {:?}",
                 metadata
             );
@@ -779,7 +821,7 @@ impl GStreamerPlayer {
                 metadata.duration = duration;
                 gstreamer::info!(
                     inner.cat,
-                    obj = &inner.player,
+                    obj = &*inner.player,
                     "Duration changed: {:?}",
                     duration
                 );
@@ -951,7 +993,7 @@ impl GStreamerPlayer {
 
         let result = receiver.recv().unwrap();
         glib::signal::signal_handler_disconnect(
-            &inner.lock().unwrap().signal_adapter,
+            &*inner.lock().unwrap().signal_adapter,
             error_handler_id,
         );
         result

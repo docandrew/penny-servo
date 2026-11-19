@@ -70,6 +70,7 @@ impl BackendInit for OhosBackend {
             .name("OhosBackend ShutdownThread".to_owned())
             .spawn(move || {
                 match recvr.recv().unwrap() {
+                    BackendMsg::Retire { resources } => drop(resources),
                     BackendMsg::Shutdown {
                         context,
                         id,

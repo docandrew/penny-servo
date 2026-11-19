@@ -39,6 +39,11 @@ pub trait MediaInstance: Send {
 
 #[derive(MallocSizeOf)]
 pub enum BackendMsg {
+    /// Release native resources away from their own callback/streaming threads.
+    Retire {
+        #[ignore_malloc_size_of = "Native resources queued for destruction"]
+        resources: Box<dyn Send>,
+    },
     /// Message to notify about a media instance shutdown.
     /// The given `usize` is the media instance ID.
     Shutdown {
