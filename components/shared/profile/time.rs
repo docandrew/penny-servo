@@ -65,6 +65,8 @@ pub enum ProfilerCategory {
     ///
     /// Not associated with a specific URL.
     Painting = 0x00,
+    PaintUpdate = 0x01,
+    PaintDraw = 0x02,
 
     /// The script thread is doing layout work.
     Layout = 0x10,
@@ -129,6 +131,8 @@ impl ProfilerCategory {
     pub const fn variant_name(&self) -> &'static str {
         match self {
             ProfilerCategory::Painting => "Painting",
+            ProfilerCategory::PaintUpdate => "PaintUpdate",
+            ProfilerCategory::PaintDraw => "PaintDraw",
             ProfilerCategory::Layout => "Layout",
             ProfilerCategory::ImageSaving => "ImageSaving",
             ProfilerCategory::ScriptSpawnPipeline => "ScriptSpawnPipeline",
