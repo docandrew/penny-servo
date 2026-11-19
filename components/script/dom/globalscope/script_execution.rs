@@ -80,6 +80,7 @@ impl GlobalScope {
         introduction_type: Option<&'static CStr>,
         line_number: u32,
     ) -> ClassicScript {
+        let penny_source_bytes = source.len();
         let mut source = if let Some(unminified_js_dir) = self.unminified_js_dir() {
             let mut script_source = ScriptSource {
                 source,
@@ -104,7 +105,15 @@ impl GlobalScope {
             fill_compile_options(cx, url.as_str(), options, introduction_type, line_number);
 
         // Step 10. Let result be ParseScript(source, settings's realm, script).
+        let penny_profile_started = servo_config::opts::get().debug
+            .is_enabled(servo_config::opts::DiagnosticsLoggingOption::ProfileScriptEvents)
+            .then(std::time::Instant::now);
         rooted!(&in(cx) let compiled_script = unsafe { Compile1(cx, compilation_options.ptr, &mut source) });
+        if let Some(started) = penny_profile_started {
+            warn!("PENNY-JS: stage=compile elapsed_us={} bytes={} success={} source={}",
+                started.elapsed().as_micros(), penny_source_bytes,
+                !compiled_script.get().is_null(), url);
+        }
 
         // Step 11. If result is a list of errors, then:
         let record = if compiled_script.get().is_null() {
@@ -176,7 +185,14 @@ impl GlobalScope {
                 Ok(record) => {
                     rooted!(&in(cx) let mut fallback_value = UndefinedValue());
                     let return_value = return_value.unwrap_or_else(|| fallback_value.handle_mut());
+                    let penny_profile_started = servo_config::opts::get().debug
+                        .is_enabled(servo_config::opts::DiagnosticsLoggingOption::ProfileScriptEvents)
+                        .then(std::time::Instant::now);
                     result = unsafe { JS_ExecuteScript(cx, record.handle(), return_value) };
+                    if let Some(started) = penny_profile_started {
+                        warn!("PENNY-JS: stage=execute elapsed_us={} success={} document={}",
+                            started.elapsed().as_micros(), result, self.get_url());
+                    }
                 },
             }
 
