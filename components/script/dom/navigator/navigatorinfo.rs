@@ -52,6 +52,12 @@ pub(crate) fn Platform() -> DOMString {
 }
 
 #[expect(non_snake_case)]
+#[cfg(target_os = "cubit")]
+pub(crate) fn Platform() -> DOMString {
+    DOMString::from_static("CuBit")
+}
+
+#[expect(non_snake_case)]
 #[cfg(target_os = "macos")]
 pub(crate) fn Platform() -> DOMString {
     DOMString::from_static("Mac")
