@@ -21,8 +21,6 @@ mod abort_trace;
 #[cfg(target_os = "cubit")]
 mod thread_census;
 #[cfg(target_os = "cubit")]
-mod stderr_capture;
-#[cfg(target_os = "cubit")]
 mod memory_report;
 #[cfg(target_os = "cubit")]
 mod security;
