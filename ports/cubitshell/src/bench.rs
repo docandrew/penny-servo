@@ -1,6 +1,6 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jon Andrew
+// Part of Penny, CuBit's web browser. Not derived from Servo's servoshell.
 
 //! The WEB-001 performance breakdown (`bench` flag): the same scripted
 //! measurement on CuBit and on hosted Linux. After a page has loaded and

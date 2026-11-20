@@ -1,3 +1,38 @@
+# penny-servo
+
+**This is a fork of [Servo](https://github.com/servo/servo)** for **Penny**, the web browser of
+[CuBit OS](https://github.com/docandrew/cubit). It is not the Servo project, and it is not affiliated
+with or endorsed by the Servo project, the Linux Foundation, or Mozilla.
+
+- **Forked from:** `servo/servo` at commit `8319b662d03f` ("script: Use unrooted for
+  is_instance_validatable and check_ancestors_disabled_state_for_form_control (#48396)").
+- **Branch:** `penny`. Every CuBit change is an ordinary commit on top of that upstream commit; read
+  `git log 8319b662d03f..penny` for the full list. Highlights: the `cubitshell` embedder (Penny itself,
+  in `ports/cubitshell`), HarfRust shaping in place of HarfBuzz (based on upstream PR #38707), a SPARK
+  cryptography provider for rustls in place of aws-lc, connection and media-player budgets, and fixes
+  for running on CuBit.
+- **Direction:** this fork will diverge substantially from upstream. Non-Rust components (SpiderMonkey,
+  media codecs, font parsing) are being replaced piece by piece with proved SPARK code. Upstream changes
+  are not merged routinely.
+
+## Licensing
+
+- Servo's own files, including every upstream file we modified, remain under the **Mozilla Public
+  License 2.0** (`LICENSE`), as does new code we add inside Servo's own components (so it stays
+  upstreamable).
+- New files written for Penny's shell in `ports/cubitshell` that are not derived from Servo carry
+  `SPDX-License-Identifier: GPL-3.0-or-later` and are under the **GNU General Public License, version 3
+  or later** (`LICENSE.GPL-3.0`). Files there derived from Servo's `servoshell` keep the MPL header.
+- Each file's header states its license. MPL-2.0 §3.3 allows the combined program to be distributed
+  under the GPL, as CuBit does; no file in this repository is marked "Incompatible With Secondary
+  Licenses".
+- Third-party crates keep their own licenses (see `Cargo.lock` and each crate's metadata).
+- `LICENSE_WHATWG_SPECS` is unchanged from upstream.
+
+---
+
+*The upstream Servo README follows.*
+
 # The Servo Parallel Browser Engine Project
 
 Servo is a prototype web browser engine written in the

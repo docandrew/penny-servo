@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jon Andrew
+// Part of Penny, CuBit's web browser. Not derived from Servo's servoshell.
+
 //! Last-resort diagnostics must not allocate or use the normal stderr stream.
 use std::ffi::{c_char, c_void};
 unsafe extern "C" {

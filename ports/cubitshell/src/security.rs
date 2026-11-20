@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jon Andrew
+// Part of Penny, CuBit's web browser. Not derived from Servo's servoshell.
+
 //! Read-only inspector of the active document's actual rustls handshake.
 //! Penny's SPARK provider (penny-crypto) did the cryptography; parsing here does
 //! not establish trust or make a second connection. rustls remains the sole verifier.

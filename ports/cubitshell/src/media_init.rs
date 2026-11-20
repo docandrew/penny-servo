@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jon Andrew
+// Part of Penny, CuBit's web browser. Not derived from Servo's servoshell.
+
 // Initialize the statically linked media registry before starting any threads.
 // Media bytes come from Servo's capability-scoped networking and source adapter.
 use std::cell::Cell;

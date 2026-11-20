@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jon Andrew
+// Part of Penny, CuBit's web browser. Not derived from Servo's servoshell.
+
 //! Opt-in engine reports. One outstanding request, no UI-thread waits.
 use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::time::{Duration, Instant};

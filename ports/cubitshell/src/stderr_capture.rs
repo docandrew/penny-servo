@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jon Andrew
+// Part of Penny, CuBit's web browser. Not derived from Servo's servoshell.
+
 //! Penny has no stderr-stream subscriber. Send its diagnostics directly to the
 //! host-captured kernel console, without allocating or entering stream IPC.
 use std::ffi::c_void;

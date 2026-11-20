@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Jon Andrew
+// Part of Penny, CuBit's web browser. Not derived from Servo's servoshell.
+
 //! Penny's User-Agent presentation (docs/servo-port.md, "User-Agent").
 //!
 //! Penny presents its own User-Agent, the CuBit form ([`CUBIT_USER_AGENT`];
