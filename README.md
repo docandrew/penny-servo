@@ -6,8 +6,10 @@ with or endorsed by the Servo project, the Linux Foundation, or Mozilla.
 
 - **Forked from:** `servo/servo` at commit `8319b662d03f` ("script: Use unrooted for
   is_instance_validatable and check_ancestors_disabled_state_for_form_control (#48396)").
-- **Branch:** `penny`. Every CuBit change is an ordinary commit on top of that upstream commit; read
-  `git log 8319b662d03f..penny` for the full list. Highlights: the `cubitshell` embedder (Penny itself,
+- **Branch:** `penny`. Its first commit is an exact snapshot of that upstream commit: its tree hash,
+  `9bcb65249ed44b677f61564d1a040bfeb7c8b334`, equals upstream's (`git rev-parse 8319b662d03f^{tree}` in
+  a servo/servo clone). Every CuBit change is an ordinary commit after it; `git log --reverse penny`
+  lists them. Highlights: the `cubitshell` embedder (Penny itself,
   in `ports/cubitshell`), HarfRust shaping in place of HarfBuzz (based on upstream PR #38707), a SPARK
   cryptography provider for rustls in place of aws-lc, connection and media-player budgets, and fixes
   for running on CuBit.
